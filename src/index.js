@@ -35,7 +35,7 @@ async function officialFetch(path) {
   const response = await fetch(OFFICIAL + path, {
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; BoatRacingAI/5.8)",
+        "Mozilla/5.0 (compatible; BoatRacingAI/5.8.1)",
       "accept":
         "text/html,application/xhtml+xml"
     }
@@ -97,7 +97,7 @@ const PREF =
   "徳島|香川|愛媛|高知|福岡|佐賀|長崎|" +
   "熊本|大分|宮崎|鹿児島|沖縄)";
 
-function numberOrNull(v) {
+function value(v) {
   if (
     v === undefined ||
     v === null ||
@@ -113,20 +113,18 @@ function numberOrNull(v) {
     : null;
 }
 
+/* 開催場 */
+
 async function venues(hd) {
   const html = await officialFetch(
     `/owpc/pc/race/index?hd=${hd}`
   );
 
   const found = [
-    ...html.matchAll(
-      /[?&]jcd=(\d{2})/g
-    )
+    ...html.matchAll(/[?&]jcd=(\d{2})/g)
   ].map(m => m[1]);
 
-  const ids = [
-    ...new Set(found)
-  ];
+  const ids = [...new Set(found)];
 
   return ids
     .filter(jcd => VENUE_NAMES[jcd])
@@ -135,6 +133,8 @@ async function venues(hd) {
       name: VENUE_NAMES[jcd]
     }));
 }
+
+/* 1R〜12R */
 
 async function venueData(hd, jcd) {
   const html = await officialFetch(
@@ -170,6 +170,11 @@ async function venueData(hd, jcd) {
   };
 }
 
+/*
+  V5.7で動いていた選手解析。
+  ここは直前情報と分離。
+*/
+
 function parseRacers(html) {
   const text = stripHtml(html);
   const racers = [];
@@ -186,16 +191,21 @@ function parseRacers(html) {
     "(\\d+(?:\\.\\d+)?)kg\\s+" +
     "F(\\d+)\\s+" +
     "L(\\d+)\\s+" +
+
+    num + "\\s+" +
+
     num + "\\s+" +
     num + "\\s+" +
     num + "\\s+" +
+
     num + "\\s+" +
     num + "\\s+" +
     num + "\\s+" +
-    num + "\\s+" +
+
     "(\\d+)\\s+" +
     num + "\\s+" +
     num + "\\s+" +
+
     "(\\d+)\\s+" +
     num + "\\s+" +
     num;
@@ -210,78 +220,103 @@ function parseRacers(html) {
     racers.length < 6
   ) {
     racers.push({
-      lane:
-        racers.length + 1,
+      lane: racers.length + 1,
 
-      registration:
-        match[1],
+      registration: match[1],
 
-      class:
-        match[2],
+      class: match[2],
 
       name:
         match[3]
           .replace(/\s+/g, " ")
           .trim(),
 
-      branchOrigin:
-        match[4],
+      branchOrigin: match[4],
 
-      age:
-        numberOrNull(match[5]),
+      age: value(match[5]),
 
-      weight:
-        numberOrNull(match[6]),
+      weight: value(match[6]),
 
-      fCount:
-        numberOrNull(match[7]),
+      fCount: value(match[7]),
 
-      lCount:
-        numberOrNull(match[8]),
+      lCount: value(match[8]),
 
-      avgST:
-        numberOrNull(match[9]),
+      avgST: value(match[9]),
 
       national: {
-        winRate:
-          numberOrNull(match[10]),
-        secondRate:
-          numberOrNull(match[11]),
-        thirdRate:
-          numberOrNull(match[12])
+        winRate: value(match[10]),
+        secondRate: value(match[11]),
+        thirdRate: value(match[12])
       },
 
       local: {
-        winRate:
-          numberOrNull(match[13]),
-        secondRate:
-          numberOrNull(match[14]),
-        thirdRate:
-          numberOrNull(match[15])
+        winRate: value(match[13]),
+        secondRate: value(match[14]),
+        thirdRate: value(match[15])
       },
 
       motor: {
-        number:
-          numberOrNull(match[16]),
-        secondRate:
-          numberOrNull(match[17]),
-        thirdRate:
-          numberOrNull(match[18])
+        number: value(match[16]),
+        secondRate: value(match[17]),
+        thirdRate: value(match[18])
       },
 
       boat: {
-        number:
-          numberOrNull(match[19]),
-        secondRate:
-          numberOrNull(match[20]),
-        thirdRate:
-          numberOrNull(match[21])
+        number: value(match[19]),
+        secondRate: value(match[20]),
+        thirdRate: value(match[21])
       }
     });
   }
 
-  return racers;
+  return {
+    racers,
+    text
+  };
 }
+
+async function raceData(hd, jcd, rno) {
+  const html = await officialFetch(
+    `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
+  );
+
+  const parsed = parseRacers(html);
+
+  let debug = null;
+
+  if (parsed.racers.length === 0) {
+    debug = {
+      message:
+        "選手データ解析に失敗しました",
+
+      candidates: [
+        ...parsed.text.matchAll(
+          /(\d{4})\s*\/\s*(A1|A2|B1|B2)/g
+        )
+      ]
+        .slice(0, 6)
+        .map(m => ({
+          registration: m[1],
+          class: m[2]
+        }))
+    };
+  }
+
+  return {
+    hd,
+    jcd,
+    venue: VENUE_NAMES[jcd] || jcd,
+    rno: Number(rno),
+    racers: parsed.racers,
+    debug
+  };
+}
+
+/*
+  V5.8.1 直前情報
+
+  選手情報とは別APIにする。
+*/
 
 function parseBeforeInfo(html) {
   const text = stripHtml(html);
@@ -289,16 +324,17 @@ function parseBeforeInfo(html) {
   const racers = [];
 
   /*
-   直前情報：
-   艇番 → 選手名 → 体重 → 展示タイム → チルト
+    公式ページの表示例：
+    1 折下 寛法 51.0kg 6.93 0.0
   */
-  const exhibitionRegex =
+
+  const racerRegex =
     /(?:^|\s)([1-6])\s+(.+?)\s+(\d+(?:\.\d+)?)kg\s+(\d+\.\d{2})\s+(-?\d+\.\d)/g;
 
   let match;
 
   while (
-    (match = exhibitionRegex.exec(text)) !== null &&
+    (match = racerRegex.exec(text)) !== null &&
     racers.length < 6
   ) {
     const lane = Number(match[1]);
@@ -312,178 +348,161 @@ function parseBeforeInfo(html) {
           match[2]
             .replace(/\s+/g, " ")
             .trim(),
-        weight:
-          numberOrNull(match[3]),
+
+        weight: value(match[3]),
+
         exhibitionTime:
-          numberOrNull(match[4]),
+          value(match[4]),
+
         tilt:
-          numberOrNull(match[5]),
-        exhibitionST: null,
-        course: lane
+          value(match[5]),
+
+        course: null,
+
+        exhibitionST: null
       });
     }
   }
 
   /*
-   スタート展示
-   「コース 1 .03」「2 .06」などを取得
+    スタート展示部分だけを切り出す。
   */
-  const startPart =
-    text.split("スタート展示")[1] || "";
 
-  const stRegex =
-    /(?:^|\s)([1-6])\s+\.?(\d{2})(?=\s|$)/g;
+  const startIndex =
+    text.indexOf("スタート展示");
 
-  const sts = [];
+  const weatherIndex =
+    text.indexOf("水面気象情報");
+
+  let startText = "";
+
+  if (startIndex >= 0) {
+    startText =
+      weatherIndex > startIndex
+        ? text.slice(
+            startIndex,
+            weatherIndex
+          )
+        : text.slice(startIndex);
+  }
+
+  /*
+    例：
+    1 .03
+    2 .06
+    ...
+  */
+
+  const startRegex =
+    /(?:^|\s)([1-6])\s+\.([0-9]{2})(?=\s|$)/g;
+
+  const starts = [];
 
   while (
-    (match = stRegex.exec(startPart)) !== null &&
-    sts.length < 6
+    (match = startRegex.exec(startText)) !== null &&
+    starts.length < 6
   ) {
-    sts.push({
+    starts.push({
       course: Number(match[1]),
-      st: Number(`0.${match[2]}`)
+      exhibitionST:
+        Number(`0.${match[2]}`)
     });
   }
 
-  for (let i = 0; i < racers.length; i++) {
-    if (sts[i]) {
-      racers[i].course =
-        sts[i].course;
+  /*
+    艇番順にスタート展示を合成。
+    枠なりならcourse=lane。
+  */
 
-      racers[i].exhibitionST =
-        sts[i].st;
+  racers.forEach((racer, index) => {
+    const start = starts[index];
+
+    if (start) {
+      racer.course =
+        start.course;
+
+      racer.exhibitionST =
+        start.exhibitionST;
     }
-  }
+  });
 
-  let weather = {};
-
-  const temperature =
-    text.match(/気温\s*(\d+(?:\.\d+)?)℃/);
+  const temp =
+    text.match(
+      /気温\s*(\d+(?:\.\d+)?)℃/
+    );
 
   const wind =
-    text.match(/風速\s*(\d+(?:\.\d+)?)m/);
+    text.match(
+      /風速\s*(\d+(?:\.\d+)?)m/
+    );
 
   const water =
-    text.match(/水温\s*(\d+(?:\.\d+)?)℃/);
+    text.match(
+      /水温\s*(\d+(?:\.\d+)?)℃/
+    );
 
   const wave =
-    text.match(/波高\s*(\d+(?:\.\d+)?)cm/);
-
-  weather = {
-    temperature:
-      temperature
-        ? Number(temperature[1])
-        : null,
-
-    windSpeed:
-      wind
-        ? Number(wind[1])
-        : null,
-
-    waterTemperature:
-      water
-        ? Number(water[1])
-        : null,
-
-    waveHeight:
-      wave
-        ? Number(wave[1])
-        : null
-  };
+    text.match(
+      /波高\s*(\d+(?:\.\d+)?)cm/
+    );
 
   return {
     racers,
-    weather
+
+    weather: {
+      temperature:
+        temp
+          ? Number(temp[1])
+          : null,
+
+      windSpeed:
+        wind
+          ? Number(wind[1])
+          : null,
+
+      waterTemperature:
+        water
+          ? Number(water[1])
+          : null,
+
+      waveHeight:
+        wave
+          ? Number(wave[1])
+          : null
+    },
+
+    debug:
+      racers.length
+        ? null
+        : {
+            message:
+              "直前情報はまだ公開されていないか、解析できませんでした"
+          }
   };
 }
 
-async function raceData(
+async function beforeData(
   hd,
   jcd,
   rno
 ) {
-  const raceHtml =
-    await officialFetch(
-      `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
-    );
+  const html = await officialFetch(
+    `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
+  );
 
-  const racers =
-    parseRacers(raceHtml);
-
-  let before = {
-    racers: [],
-    weather: {}
-  };
-
-  try {
-    const beforeHtml =
-      await officialFetch(
-        `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
-      );
-
-    before =
-      parseBeforeInfo(beforeHtml);
-
-  } catch (e) {
-    /*
-      直前情報がまだ出ていない場合も
-      基本出走データは返す
-    */
-  }
-
-  const merged =
-    racers.map(racer => {
-      const live =
-        before.racers.find(
-          x =>
-            x.lane ===
-            racer.lane
-        );
-
-      return {
-        ...racer,
-
-        before: live
-          ? {
-              course:
-                live.course,
-
-              exhibitionTime:
-                live.exhibitionTime,
-
-              exhibitionST:
-                live.exhibitionST,
-
-              tilt:
-                live.tilt
-            }
-          : {
-              course: null,
-              exhibitionTime: null,
-              exhibitionST: null,
-              tilt: null
-            }
-      };
-    });
+  const parsed =
+    parseBeforeInfo(html);
 
   return {
     hd,
     jcd,
-    venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
-
-    rno:
-      Number(rno),
-
-    racers:
-      merged,
-
-    weather:
-      before.weather
+    venue: VENUE_NAMES[jcd] || jcd,
+    rno: Number(rno),
+    ...parsed
   };
 }
+
+/* Worker */
 
 export default {
   async fetch(request, env) {
@@ -498,7 +517,7 @@ export default {
       ) {
         return json({
           ok: true,
-          version: "5.8"
+          version: "5.8.1"
         });
       }
 
@@ -535,8 +554,7 @@ export default {
         ) {
           return json({
             ok: false,
-            error:
-              "jcdが必要です"
+            error: "jcdが必要です"
           }, 400);
         }
 
@@ -564,9 +582,7 @@ export default {
 
         const rno =
           Number(
-            url.searchParams.get(
-              "rno"
-            )
+            url.searchParams.get("rno")
           );
 
         if (
@@ -575,8 +591,7 @@ export default {
         ) {
           return json({
             ok: false,
-            error:
-              "jcdが必要です"
+            error: "jcdが必要です"
           }, 400);
         }
 
@@ -596,6 +611,60 @@ export default {
           ok: true,
           ...(
             await raceData(
+              hd,
+              jcd,
+              rno
+            )
+          )
+        });
+      }
+
+      /*
+        新しい直前情報API
+      */
+
+      if (
+        url.pathname ===
+        "/api/before"
+      ) {
+        const hd =
+          url.searchParams.get("hd") ||
+          todayJST();
+
+        const jcd =
+          url.searchParams.get("jcd");
+
+        const rno =
+          Number(
+            url.searchParams.get("rno")
+          );
+
+        if (
+          !jcd ||
+          !/^\d{2}$/.test(jcd)
+        ) {
+          return json({
+            ok: false,
+            error: "jcdが必要です"
+          }, 400);
+        }
+
+        if (
+          !Number.isInteger(rno) ||
+          rno < 1 ||
+          rno > 12
+        ) {
+          return json({
+            ok: false,
+            error:
+              "rnoは1〜12で指定してください"
+          }, 400);
+        }
+
+        return json({
+          ok: true,
+          ...(
+            await beforeData(
               hd,
               jcd,
               rno
