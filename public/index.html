@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0f172a">
-<title>競艇AI V6.6.7</title>
+
+<title>競艇AI V6.6.8</title>
 
 <style>
 *{box-sizing:border-box}
@@ -103,6 +104,16 @@ button:disabled{
   line-height:1.6;
 }
 
+.speed{
+  background:#052e16;
+  border:1px solid #16a34a;
+  border-radius:10px;
+  padding:9px;
+  font-size:12px;
+  line-height:1.6;
+  margin-bottom:10px;
+}
+
 .race-grid{
   display:grid;
   grid-template-columns:repeat(3,1fr);
@@ -118,15 +129,7 @@ button:disabled{
   background:#2563eb;
 }
 
-.speed{
-  background:#052e16;
-  border:1px solid #16a34a;
-  border-radius:10px;
-  padding:9px;
-  font-size:12px;
-  line-height:1.6;
-  margin-bottom:10px;
-}
+/* S */
 
 .s-filter-grid{
   display:grid;
@@ -203,6 +206,8 @@ button:disabled{
   margin:8px 0;
 }
 
+/* 選手 */
+
 .racer{
   background:#0f172a;
   border-radius:12px;
@@ -277,6 +282,8 @@ button:disabled{
   padding:7px;
   border-radius:8px;
 }
+
+/* 予想 */
 
 .prediction{
   background:#0f172a;
@@ -403,6 +410,78 @@ button:disabled{
   font-size:14px;
 }
 
+/* 穴狙い */
+
+.hole-section{
+  margin-top:18px;
+  border-top:2px solid #a855f7;
+  padding-top:14px;
+}
+
+.hole-title{
+  font-size:20px;
+  font-weight:900;
+  margin-bottom:5px;
+}
+
+.hole-info{
+  background:#3b0764;
+  border:1px solid #a855f7;
+  border-radius:10px;
+  padding:10px;
+  line-height:1.6;
+  font-size:12px;
+  margin-bottom:10px;
+}
+
+.hole-card{
+  background:#2e1065;
+  border:1px solid #7e22ce;
+  border-radius:12px;
+  padding:12px;
+  margin-top:9px;
+}
+
+.hole-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+}
+
+.hole-combo{
+  font-size:22px;
+  font-weight:900;
+}
+
+.hole-badge{
+  border-radius:999px;
+  padding:4px 9px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.hole-badge.middle{
+  background:#0369a1;
+}
+
+.hole-badge.hole{
+  background:#7e22ce;
+}
+
+.hole-badge.big{
+  background:#be123c;
+}
+
+.hole-reason{
+  font-size:11px;
+  color:#ddd6fe;
+  line-height:1.6;
+  margin-top:8px;
+}
+
+/* 実績 */
+
 .compare{
   display:grid;
   gap:8px;
@@ -420,6 +499,12 @@ button:disabled{
   font-size:18px;
 }
 
+.hole-compare{
+  border:1px solid #a855f7;
+}
+
+/* 学習 */
+
 .learn-row{
   background:#0f172a;
   border-radius:10px;
@@ -432,6 +517,8 @@ button:disabled{
   justify-content:space-between;
   font-weight:800;
 }
+
+/* 履歴 */
 
 .history-controls{
   background:#0f172a;
@@ -470,6 +557,10 @@ button:disabled{
 
 .filter-btn.pass-active{
   background:#d97706;
+}
+
+.filter-btn.hole-active{
+  background:#7e22ce;
 }
 
 .history-count{
@@ -576,6 +667,13 @@ button:disabled{
   font-size:20px;
 }
 
+.hole-result{
+  background:#3b0764;
+  border-radius:9px;
+  padding:10px;
+  margin-top:9px;
+}
+
 .diagnostic{
   background:#0f172a;
   border-radius:9px;
@@ -606,34 +704,46 @@ button:disabled{
 
 <div class="wrap">
 
-<h1>競艇AI V6.6.7</h1>
+<h1>競艇AI V6.6.8</h1>
 
 <div class="sub">
-高速S検索 / 4R並列処理 / API並列取得 / キャッシュ再利用
+V6.6.7高速版 ＋ 🎯 穴狙いAI
 </div>
 
 <div class="card">
 
 <label>日付</label>
-<input id="date" type="date">
+
+<input
+  id="date"
+  type="date"
+>
 
 <button id="loadVenues">
 開催場を取得
 </button>
 
-<div id="venueStatus" class="status"></div>
+<div
+  id="venueStatus"
+  class="status"
+></div>
 
 <label>開催場</label>
 
 <select id="venue">
-<option value="">開催場を選択</option>
+<option value="">
+開催場を選択
+</option>
 </select>
 
 <button id="loadRaces">
 レース一覧を取得
 </button>
 
-<div id="raceStatus" class="status"></div>
+<div
+  id="raceStatus"
+  class="status"
+></div>
 
 </div>
 
@@ -644,7 +754,7 @@ button:disabled{
 </div>
 
 <div class="speed">
-⚡ 4レースを同時分析。各レースの「選手・展示・オッズ」も同時取得し、取得済みデータは短時間キャッシュします。
+⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用
 </div>
 
 <button
@@ -709,6 +819,10 @@ S勝負 保存時1点金額
   id="sSaveStatus"
   class="status"
 ></div>
+
+<div class="notice">
+穴狙いも同じ1点金額で一緒に保存・検証します。
+</div>
 
 </div>
 
@@ -781,12 +895,29 @@ AI予想
 >
 
 <button id="savePrediction">
-上位15点＋120通り順位を保存
+本線＋穴狙い＋120通り順位を保存
 </button>
 
 <div
   id="saveStatus"
   class="status"
+></div>
+
+<div class="notice">
+本線15点と穴狙いは別々に結果を集計します。
+</div>
+
+</div>
+
+<div class="card">
+
+<div class="title">
+🎯 穴狙い実績
+</div>
+
+<div
+  id="holeComparison"
+  class="compare"
 ></div>
 
 </div>
@@ -883,14 +1014,21 @@ Sすべて
   class="filter-btn"
   data-history-filter="hit"
 >
-🎯 的中
+🎯 本線的中
+</button>
+
+<button
+  class="filter-btn"
+  data-history-filter="holehit"
+>
+💥 穴的中
 </button>
 
 <button
   class="filter-btn"
   data-history-filter="miss"
 >
-× 不的中
+× 本線不的中
 </button>
 
 </div>
@@ -947,7 +1085,7 @@ Sすべて
 </div>
 
 <div class="version">
-Boat Racing AI V6.6.7
+Boat Racing AI V6.6.8
 </div>
 
 </div>
@@ -985,6 +1123,9 @@ const comparisonBox =
 const battleComparisonBox =
   $("battleComparison");
 
+const holeComparisonBox =
+  $("holeComparison");
+
 const weightsBox =
   $("weights");
 
@@ -1013,7 +1154,7 @@ const expandedHistoryIds =
   new Set();
 
 /* =========================
-   V6.6.7 高速化
+   高速化
 ========================= */
 
 const predictionCache =
@@ -1022,21 +1163,12 @@ const predictionCache =
 const resultCache =
   new Map();
 
-/*
-  予想キャッシュ60秒
-*/
 const CACHE_TTL =
   60000;
 
-/*
-  結果キャッシュ30秒
-*/
 const RESULT_TTL =
   30000;
 
-/*
-  同時処理レース数
-*/
 const SCAN_CONCURRENCY =
   4;
 
@@ -1183,15 +1315,12 @@ function cacheKey(
   rno
 ){
 
-  return (
-    `${date}-${jcd}-${rno}`
-  );
+  return `${date}-${jcd}-${rno}`;
 }
 
 function clearRaceCaches(){
 
   predictionCache.clear();
-
   resultCache.clear();
 }
 
@@ -1246,10 +1375,6 @@ async function getJSON(url){
   }
 }
 
-/* =========================
-   結果キャッシュ
-========================= */
-
 async function getCachedResult(
   date,
   jcd,
@@ -1297,7 +1422,7 @@ async function getCachedResult(
 }
 
 /* =========================
-   並列処理プール
+   並列プール
 ========================= */
 
 async function runPool(
@@ -1441,7 +1566,7 @@ function alreadySaved(
         String(
           item.version || ""
         ) ===
-          "6.6.7"
+          "6.6.8"
     );
 }
 
@@ -1573,8 +1698,7 @@ function scoreComponents(
 
   const national =
     safeNumber(
-      racer.national
-        ?.winRate
+      racer.national?.winRate
     );
 
   if(
@@ -1590,8 +1714,7 @@ function scoreComponents(
 
   const local =
     safeNumber(
-      racer.local
-        ?.winRate
+      racer.local?.winRate
     );
 
   if(
@@ -1628,8 +1751,7 @@ function scoreComponents(
 
   const motor =
     safeNumber(
-      racer.motor
-        ?.secondRate
+      racer.motor?.secondRate
     );
 
   if(
@@ -1648,8 +1770,7 @@ function scoreComponents(
       .map(
         r =>
           safeNumber(
-            r.before
-              ?.exhibitionTime
+            r.before?.exhibitionTime
           )
       )
       .filter(
@@ -1659,8 +1780,7 @@ function scoreComponents(
 
   const exhibition =
     safeNumber(
-      racer.before
-        ?.exhibitionTime
+      racer.before?.exhibitionTime
     );
 
   if(
@@ -1688,8 +1808,7 @@ function scoreComponents(
 
   const exhibitionST =
     safeNumber(
-      racer.before
-        ?.exhibitionST
+      racer.before?.exhibitionST
     );
 
   if(
@@ -1708,22 +1827,23 @@ function scoreComponents(
 
   const course =
     safeNumber(
-      racer.before
-        ?.course
+      racer.before?.course
     );
 
   if(
     course === 1
   ){
 
-    c.course = 2;
+    c.course =
+      2;
 
   }else if(
     course !== null &&
     course <= 3
   ){
 
-    c.course = 1;
+    c.course =
+      1;
   }
 
   return c;
@@ -1742,10 +1862,8 @@ function getTrainableHistory(
       item =>{
 
         if(
-          !item.result
-            ?.finished
+          !item.result?.finished
         ){
-
           return false;
         }
 
@@ -1754,24 +1872,20 @@ function getTrainableHistory(
             item.racersDetailed
           )
           ||
-          item.racersDetailed
-            .length !== 6
+          item.racersDetailed.length !==
+          6
         ){
-
           return false;
         }
 
         if(
           !Array.isArray(
-            item.result
-              .winningLanes
+            item.result.winningLanes
           )
           ||
-          item.result
-            .winningLanes
-            .length < 3
+          item.result.winningLanes.length <
+          3
         ){
-
           return false;
         }
 
@@ -1780,7 +1894,6 @@ function getTrainableHistory(
           String(item.date) >=
           String(asOfDate)
         ){
-
           return false;
         }
 
@@ -1806,7 +1919,6 @@ function calculateLearnedWeights(
       COMPONENT_NAMES
     )
   ){
-
     base[key] = 1;
   }
 
@@ -1864,8 +1976,7 @@ function calculateLearnedWeights(
           .map(
             r =>
               Number(
-                r.components
-                  ?.[key] ||
+                r.components?.[key] ||
                 0
               )
           );
@@ -1883,8 +1994,7 @@ function calculateLearnedWeights(
           .map(
             r =>
               Number(
-                r.components
-                  ?.[key] ||
+                r.components?.[key] ||
                 0
               )
           );
@@ -1990,13 +2100,12 @@ function calculateLearnedWeights(
 }
 
 /* =========================
-   着順別モデル
+   着順別
 ========================= */
 
 const ROLE_WEIGHTS = {
 
   first:{
-
     lane:1.25,
     class:.90,
     national:1.15,
@@ -2009,7 +2118,6 @@ const ROLE_WEIGHTS = {
   },
 
   second:{
-
     lane:.75,
     class:.85,
     national:.90,
@@ -2022,7 +2130,6 @@ const ROLE_WEIGHTS = {
   },
 
   third:{
-
     lane:.45,
     class:.65,
     national:.75,
@@ -2068,16 +2175,14 @@ function roleScore(
       *
 
       Number(
-        ROLE_WEIGHTS[
-          role
-        ][key] ||
+        ROLE_WEIGHTS[role][key] ||
         1
       );
   }
 
   return (
     Math.round(
-      score*10
+      score * 10
     )
     /
     10
@@ -2126,7 +2231,8 @@ function overallScore(
 
 function makeAllCombinations(){
 
-  const list = [];
+  const list =
+    [];
 
   for(
     let first=1;
@@ -2143,7 +2249,6 @@ function makeAllCombinations(){
       if(
         second === first
       ){
-
         continue;
       }
 
@@ -2157,7 +2262,6 @@ function makeAllCombinations(){
           third === first ||
           third === second
         ){
-
           continue;
         }
 
@@ -2203,7 +2307,6 @@ function firstWinShare(
     !racer ||
     !total
   ){
-
     return 0;
   }
 
@@ -2246,7 +2349,6 @@ function trifectaProbability(
     !r2 ||
     !r3
   ){
-
     return 0;
   }
 
@@ -2316,11 +2418,7 @@ function trifectaProbability(
     /
     thirdTotal;
 
-  return (
-    p1 *
-    p2 *
-    p3
-  );
+  return p1*p2*p3;
 }
 
 function makeOddsMap(
@@ -2383,7 +2481,6 @@ function evaluateBets(
     if(
       odds === null
     ){
-
       continue;
     }
 
@@ -2560,6 +2657,382 @@ function evaluateBets(
 }
 
 /* =========================
+   V6.6.8 穴狙い
+========================= */
+
+function holeTier(odds){
+
+  if(
+    odds >= 80
+  ){
+
+    return {
+      key:"big",
+      label:"💥 大穴"
+    };
+  }
+
+  if(
+    odds >= 40
+  ){
+
+    return {
+      key:"hole",
+      label:"🔥 穴"
+    };
+  }
+
+  return {
+    key:"middle",
+    label:"🎯 中穴"
+  };
+}
+
+function selectHoleBets(
+  allBets
+){
+
+  /*
+    本線上位15点とは重ならない
+  */
+
+  let candidates =
+    allBets
+      .map(
+        (bet,index)=>({
+
+          ...bet,
+
+          aiRank:
+            index+1
+        })
+      )
+      .filter(
+        bet =>
+
+          bet.aiRank > 15
+
+          &&
+
+          bet.odds >= 20
+
+          &&
+
+          bet.probability >= .003
+
+          &&
+
+          bet.ev >= .60
+
+          &&
+
+          bet.totalScore >= 35
+      );
+
+  /*
+    候補が少なければ
+    条件を少しだけ緩める
+  */
+
+  if(
+    candidates.length < 3
+  ){
+
+    candidates =
+      allBets
+        .map(
+          (bet,index)=>({
+
+            ...bet,
+
+            aiRank:
+              index+1
+          })
+        )
+        .filter(
+          bet =>
+
+            bet.aiRank > 15
+
+            &&
+
+            bet.odds >= 18
+
+            &&
+
+            bet.probability >= .002
+
+            &&
+
+            bet.ev >= .45
+
+            &&
+
+            bet.totalScore >= 30
+        );
+  }
+
+  for(
+    const bet of
+    candidates
+  ){
+
+    const probabilityScore =
+      norm(
+        bet.probability,
+        .002,
+        .025
+      );
+
+    const evScore =
+      norm(
+        Math.min(
+          bet.ev,
+          2
+        ),
+        .45,
+        1.5
+      );
+
+    const aiScore =
+      norm(
+        bet.totalScore,
+        30,
+        80
+      );
+
+    const oddsScore =
+      norm(
+        Math.log(
+          Math.max(
+            bet.odds,
+            1
+          )
+        ),
+        Math.log(18),
+        Math.log(120)
+      );
+
+    const rankScore =
+      1 -
+      norm(
+        bet.aiRank,
+        16,
+        70
+      );
+
+    bet.holeScore =
+      (
+        probabilityScore * .25
+        +
+        evScore * .30
+        +
+        aiScore * .20
+        +
+        oddsScore * .15
+        +
+        rankScore * .10
+      )
+      *
+      100;
+
+    bet.holeScore =
+      Math.round(
+        bet.holeScore *
+        10
+      )
+      /
+      10;
+
+    bet.tier =
+      holeTier(
+        bet.odds
+      );
+  }
+
+  candidates.sort(
+    (a,b)=>
+      b.holeScore -
+      a.holeScore
+  );
+
+  const selected =
+    [];
+
+  const tierCount = {
+    middle:0,
+    hole:0,
+    big:0
+  };
+
+  const firstLaneCount = {};
+
+  function canAdd(bet){
+
+    const lane =
+      bet.first;
+
+    if(
+      (
+        firstLaneCount[lane] ||
+        0
+      )
+      >=
+      2
+    ){
+
+      return false;
+    }
+
+    if(
+      bet.tier.key ===
+      "middle"
+      &&
+      tierCount.middle >= 2
+    ){
+
+      return false;
+    }
+
+    if(
+      bet.tier.key ===
+      "hole"
+      &&
+      tierCount.hole >= 2
+    ){
+
+      return false;
+    }
+
+    if(
+      bet.tier.key ===
+      "big"
+      &&
+      tierCount.big >= 1
+    ){
+
+      return false;
+    }
+
+    return true;
+  }
+
+  for(
+    const bet of
+    candidates
+  ){
+
+    if(
+      selected.length >= 5
+    ){
+      break;
+    }
+
+    if(
+      !canAdd(bet)
+    ){
+      continue;
+    }
+
+    selected.push(
+      bet
+    );
+
+    tierCount[
+      bet.tier.key
+    ]++;
+
+    firstLaneCount[
+      bet.first
+    ] =
+      (
+        firstLaneCount[
+          bet.first
+        ] ||
+        0
+      )
+      +
+      1;
+  }
+
+  /*
+    3点未満なら
+    上位候補から補充
+  */
+
+  if(
+    selected.length < 3
+  ){
+
+    for(
+      const bet of
+      candidates
+    ){
+
+      if(
+        selected.length >= 3
+      ){
+        break;
+      }
+
+      if(
+        selected.some(
+          x =>
+            x.combination ===
+            bet.combination
+        )
+      ){
+        continue;
+      }
+
+      selected.push(
+        bet
+      );
+    }
+  }
+
+  return selected
+    .slice(0,5)
+    .map(
+      bet=>({
+
+        combination:
+          bet.combination,
+
+        aiRank:
+          bet.aiRank,
+
+        probability:
+          bet.probability,
+
+        odds:
+          bet.odds,
+
+        ev:
+          bet.ev,
+
+        totalScore:
+          bet.totalScore,
+
+        holeScore:
+          bet.holeScore,
+
+        tier:
+          bet.tier,
+
+        first:
+          bet.first,
+
+        second:
+          bet.second,
+
+        third:
+          bet.third
+      })
+    );
+}
+
+/* =========================
    S/A/B
 ========================= */
 
@@ -2696,14 +3169,11 @@ function beforeCoverage(
 
     const values = [
 
-      racer.before
-        ?.exhibitionTime,
+      racer.before?.exhibitionTime,
 
-      racer.before
-        ?.exhibitionST,
+      racer.before?.exhibitionST,
 
-      racer.before
-        ?.course
+      racer.before?.course
     ];
 
     for(
@@ -2833,8 +3303,7 @@ function makeSDecision(
       +
 
       clamp(
-        secondStable /
-        100,
+        secondStable/100,
         0,
         1
       ) * .10
@@ -2842,8 +3311,7 @@ function makeSDecision(
       +
 
       clamp(
-        thirdStable /
-        100,
+        thirdStable/100,
         0,
         1
       ) * .10
@@ -3088,6 +3556,11 @@ function buildPrediction(
       15
     );
 
+  const holeBets =
+    selectHoleBets(
+      allBets
+    );
+
   const sDecision =
     makeSDecision(
       confidence,
@@ -3125,7 +3598,7 @@ function buildPrediction(
       `${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
 
     version:
-      "6.6.7",
+      "6.6.8",
 
     createdAt:
       new Date()
@@ -3216,6 +3689,8 @@ function buildPrediction(
         })
       ),
 
+    holeBets,
+
     allBetRanking
   };
 
@@ -3237,12 +3712,14 @@ function buildPrediction(
 
     top15,
 
+    holeBets,
+
     snapshot
   };
 }
 
 /* =========================
-   S判定表示
+   S判定HTML
 ========================= */
 
 function decisionHtml(
@@ -3343,6 +3820,134 @@ function decisionHtml(
 }
 
 /* =========================
+   穴表示
+========================= */
+
+function holeBetsHtml(
+  holeBets
+){
+
+  if(
+    !holeBets ||
+    !holeBets.length
+  ){
+
+    return `
+      <div class="hole-section">
+
+        <div class="hole-title">
+          🎯 穴狙い
+        </div>
+
+        <div class="hole-info">
+          今回はAI条件を満たす穴候補がありません。
+        </div>
+
+      </div>
+    `;
+  }
+
+  return `
+    <div class="hole-section">
+
+      <div class="hole-title">
+        🎯 穴狙い ${holeBets.length}点
+      </div>
+
+      <div class="hole-info">
+
+        本線上位15点とは別に、
+        AI評価が極端に低くない高オッズ候補を抽出。
+
+        <br>
+
+        高オッズだけを理由には選んでいません。
+
+      </div>
+
+      ${holeBets
+        .map(
+          bet=>`
+
+            <div class="hole-card">
+
+              <div class="hole-head">
+
+                <div>
+
+                  <div style="
+                    font-size:11px;
+                    color:#c4b5fd;
+                  ">
+                    AI全120通り
+                    ${bet.aiRank}位
+                  </div>
+
+                  <div class="hole-combo">
+                    ${bet.combination}
+                  </div>
+
+                </div>
+
+                <div class="
+                  hole-badge
+                  ${bet.tier.key}
+                ">
+                  ${bet.tier.label}
+                </div>
+
+              </div>
+
+              <div class="bet-grid">
+
+                <div class="bet-item">
+                  穴評価
+                  <strong>
+                    ${bet.holeScore.toFixed(1)}
+                  </strong>
+                </div>
+
+                <div class="bet-item">
+                  オッズ
+                  <strong>
+                    ${bet.odds.toFixed(1)}
+                  </strong>
+                </div>
+
+                <div class="bet-item">
+                  推定確率
+                  <strong>
+                    ${(bet.probability*100).toFixed(2)}%
+                  </strong>
+                </div>
+
+                <div class="bet-item">
+                  EV
+                  <strong>
+                    ${bet.ev.toFixed(2)}
+                  </strong>
+                </div>
+
+              </div>
+
+              <div class="hole-reason">
+
+                本線15点圏外ながら、
+                推定確率・EV・AI評価・オッズのバランスから選出。
+
+              </div>
+
+            </div>
+
+          `
+        )
+        .join("")}
+
+    </div>
+  `;
+}
+
+/* =========================
    予想表示
 ========================= */
 
@@ -3382,7 +3987,9 @@ function renderPredictionBuilt(
       )}
 
       <div class="adjust">
-        120通りを、1着・2着・3着適性＋推定確率＋EVで評価しています。
+
+        本線はV6.6.7と同じ方法で120通り評価しています。
+
       </div>
 
       <div style="
@@ -3423,7 +4030,7 @@ function renderPredictionBuilt(
         font-weight:900;
         margin:15px 0 6px;
       ">
-        3連単 上位15点
+        本線 3連単 上位15点
       </div>
 
       ${prediction.top15
@@ -3501,6 +4108,10 @@ function renderPredictionBuilt(
           `
         )
         .join("")}
+
+      ${holeBetsHtml(
+        prediction.holeBets
+      )}
 
     </div>
   `;
@@ -3606,16 +4217,14 @@ function renderRacers(
         <div class="stat">
           全国勝率：
           ${fmt(
-            racer.national
-              ?.winRate
+            racer.national?.winRate
           )}
         </div>
 
         <div class="stat">
           当地勝率：
           ${fmt(
-            racer.local
-              ?.winRate
+            racer.local?.winRate
           )}
         </div>
 
@@ -3629,24 +4238,21 @@ function renderRacers(
         <div class="stat">
           モーター：
           ${fmt(
-            racer.motor
-              ?.secondRate
+            racer.motor?.secondRate
           )}%
         </div>
 
         <div class="stat">
           展示：
           ${fmt(
-            racer.before
-              ?.exhibitionTime
+            racer.before?.exhibitionTime
           )}
         </div>
 
         <div class="stat">
           展示ST：
           ${fmt(
-            racer.before
-              ?.exhibitionST
+            racer.before?.exhibitionST
           )}
         </div>
 
@@ -3684,10 +4290,6 @@ async function getPredictionData(
       key
     );
 
-  /*
-    キャッシュ利用
-  */
-
   if(
     !force &&
     cached &&
@@ -3700,11 +4302,6 @@ async function getPredictionData(
     return cached.data;
   }
 
-  /*
-    同じレースの通信中なら
-    そのPromiseを共有
-  */
-
   if(
     !force &&
     cached?.promise
@@ -3715,11 +4312,6 @@ async function getPredictionData(
 
   const promise =
     (async()=>{
-
-      /*
-        選手・展示・オッズを
-        3つ同時に取得
-      */
 
       const [
         raceSettled,
@@ -3746,8 +4338,7 @@ async function getPredictionData(
         raceSettled.status !==
         "fulfilled"
         ||
-        !raceSettled.value
-          .racers
+        !raceSettled.value.racers
           ?.length
       ){
 
@@ -3778,8 +4369,7 @@ async function getPredictionData(
             };
 
       if(
-        !odds.odds
-          ?.length
+        !odds.odds?.length
       ){
 
         return null;
@@ -3866,8 +4456,7 @@ async function scanSRaces(){
   }
 
   if(
-    !currentVenueRaces
-      .length
+    !currentVenueRaces.length
   ){
 
     $("sScanStatus")
@@ -3913,10 +4502,6 @@ async function scanSRaces(){
   let finished =
     0;
 
-  /*
-    12Rを4Rずつ並列処理
-  */
-
   const results =
     await runPool(
 
@@ -3930,10 +4515,6 @@ async function scanSRaces(){
           Number(
             race.rno
           );
-
-        /*
-          今日の終了済みは除外
-        */
 
         if(
           date ===
@@ -4018,8 +4599,7 @@ async function scanSRaces(){
     }
 
     if(
-      row.prediction
-        .confidence ===
+      row.prediction.confidence ===
       "S"
     ){
 
@@ -4160,6 +4740,14 @@ function renderSRaces(){
               )
               .join(" / ");
 
+          const hole =
+            p.holeBets
+              ?.map(
+                x =>
+                  x.combination
+              )
+              .join(" / ");
+
           return `
             <div class="
               s-race
@@ -4198,13 +4786,13 @@ function renderSRaces(){
 
                 <br>
 
-                上位6点確率：
-                ${(d.metrics.top6Probability*100).toFixed(1)}%
+                本線上位6点：
+                ${top6}
 
                 <br>
 
-                上位6点：
-                ${top6}
+                🎯 穴：
+                ${hole || "候補なし"}
 
               </div>
 
@@ -4231,7 +4819,6 @@ function openSRace(
   if(
     !item
   ){
-
     return;
   }
 
@@ -4288,6 +4875,9 @@ function makeSavedItem(
   item.betUnit =
     unit;
 
+  item.holeBetUnit =
+    unit;
+
   item.saveMode =
     mode;
 
@@ -4328,7 +4918,7 @@ function saveCurrentPrediction(){
 
     $("saveStatus")
       .textContent =
-        "V6.6.7では保存済みです";
+        "V6.6.8では保存済みです";
 
     return;
   }
@@ -4366,7 +4956,7 @@ function saveCurrentPrediction(){
 
   $("saveStatus")
     .textContent =
-      "保存しました";
+      `本線＋穴${currentSnapshot.holeBets?.length || 0}点を保存しました`;
 
   resetHistoryView();
 }
@@ -4463,6 +5053,8 @@ function saveAllSRaces(){
       新規：${saved}R
       <br>
       保存済み：${duplicate}R
+      <br>
+      🎯 穴狙いも同時保存
     `;
 
   resetHistoryView();
@@ -4495,7 +5087,7 @@ function rankOfLane(
     );
 
   return index >= 0
-    ? index + 1
+    ? index+1
     : null;
 }
 
@@ -4541,6 +5133,9 @@ function strategyResult(
       : 0;
 
   return {
+
+    count:
+      selected.length,
 
     hit,
 
@@ -4646,8 +5241,8 @@ async function checkResult(
       data.winningLanes
     )
     &&
-    data.winningLanes
-      .length >= 3
+    data.winningLanes.length >=
+    3
 
       ? data.winningLanes
           .slice(0,3)
@@ -4663,10 +5258,20 @@ async function checkResult(
     item.bets ||
     [];
 
+  const holeBets =
+    item.holeBets ||
+    [];
+
   const unit =
     Number(
       item.betUnit ||
       100
+    );
+
+  const holeUnit =
+    Number(
+      item.holeBetUnit ||
+      unit
     );
 
   const p6 =
@@ -4694,6 +5299,15 @@ async function checkResult(
       data.payout,
       unit,
       15
+    );
+
+  const hole =
+    strategyResult(
+      holeBets,
+      winning,
+      data.payout,
+      holeUnit,
+      holeBets.length
     );
 
   const racers =
@@ -4730,6 +5344,8 @@ async function checkResult(
       p10,
       p15
     },
+
+    hole,
 
     diagnostics:{
 
@@ -4812,7 +5428,6 @@ async function checkOne(
   if(
     index < 0
   ){
-
     return;
   }
 
@@ -4838,7 +5453,7 @@ async function checkOne(
 }
 
 /* =========================
-   結果一括チェックも4並列
+   結果一括4並列
 ========================= */
 
 async function checkAllResults(
@@ -4858,8 +5473,7 @@ async function checkAllResults(
       )
       .filter(
         x =>
-          !x.item.result
-            ?.finished
+          !x.item.result?.finished
       );
 
   if(
@@ -4929,7 +5543,6 @@ async function checkAllResults(
       !row ||
       row.error
     ){
-
       continue;
     }
 
@@ -4971,7 +5584,7 @@ async function checkAllResults(
 }
 
 /* =========================
-   実績比較
+   本線実績
 ========================= */
 
 function comparisonData(
@@ -4985,10 +5598,8 @@ function comparisonData(
         item =>{
 
           if(
-            !item.result
-              ?.finished
+            !item.result?.finished
           ){
-
             return false;
           }
 
@@ -4997,7 +5608,6 @@ function comparisonData(
               ?.comparison
               ?.[key]
           ){
-
             return false;
           }
 
@@ -5038,7 +5648,6 @@ function comparisonData(
     if(
       result.hit
     ){
-
       hits++;
     }
 
@@ -5060,11 +5669,9 @@ function comparisonData(
 
     hitRate:
       items.length
-
         ? hits /
           items.length *
           100
-
         : 0,
 
     stake,
@@ -5077,22 +5684,24 @@ function comparisonData(
 
     roi:
       stake
-
         ? returns /
           stake *
           100
-
         : 0
   };
 }
 
 function comparisonHtml(
   title,
-  data
+  data,
+  extraClass=""
 ){
 
   return `
-    <div class="compare-box">
+    <div class="
+      compare-box
+      ${extraClass}
+    ">
 
       <strong>
         ${title}
@@ -5131,6 +5740,116 @@ function comparisonHtml(
 
     </div>
   `;
+}
+
+/* =========================
+   穴実績
+========================= */
+
+function holeComparisonData(
+  battleOnly=false
+){
+
+  const items =
+    getHistory()
+      .filter(
+        item =>{
+
+          if(
+            !item.result?.finished
+          ){
+            return false;
+          }
+
+          if(
+            !item.result?.hole
+          ){
+            return false;
+          }
+
+          if(
+            !Array.isArray(
+              item.holeBets
+            )
+            ||
+            !item.holeBets.length
+          ){
+            return false;
+          }
+
+          if(
+            battleOnly &&
+            item.sDecision?.status !==
+            "BET"
+          ){
+            return false;
+          }
+
+          return true;
+        }
+      );
+
+  let hits =
+    0;
+
+  let stake =
+    0;
+
+  let returns =
+    0;
+
+  for(
+    const item of
+    items
+  ){
+
+    const r =
+      item.result.hole;
+
+    if(
+      r.hit
+    ){
+      hits++;
+    }
+
+    stake +=
+      r.stake ||
+      0;
+
+    returns +=
+      r.returnAmount ||
+      0;
+  }
+
+  return {
+
+    races:
+      items.length,
+
+    hits,
+
+    hitRate:
+      items.length
+        ? hits /
+          items.length *
+          100
+        : 0,
+
+    stake,
+
+    returns,
+
+    profit:
+      returns -
+      stake,
+
+    roi:
+      stake
+        ? returns /
+          stake *
+          100
+        : 0
+  };
 }
 
 function renderComparisons(){
@@ -5190,6 +5909,26 @@ function renderComparisons(){
         "p15",
         "battle"
       )
+    );
+
+  holeComparisonBox.innerHTML =
+
+    comparisonHtml(
+      "🎯 穴狙い 全レース",
+      holeComparisonData(
+        false
+      ),
+      "hole-compare"
+    )
+
+    +
+
+    comparisonHtml(
+      "🔥 S勝負＋穴狙い",
+      holeComparisonData(
+        true
+      ),
+      "hole-compare"
     );
 }
 
@@ -5274,6 +6013,17 @@ function isHistoryHit(
   );
 }
 
+function isHoleHit(
+  item
+){
+
+  return Boolean(
+    item.result
+      ?.hole
+      ?.hit
+  );
+}
+
 function historyMatches(
   item
 ){
@@ -5282,11 +6032,9 @@ function historyMatches(
     historyFilter ===
     "battle"
     &&
-    item.sDecision
-      ?.status !==
+    item.sDecision?.status !==
     "BET"
   ){
-
     return false;
   }
 
@@ -5294,11 +6042,9 @@ function historyMatches(
     historyFilter ===
     "pass"
     &&
-    item.sDecision
-      ?.status !==
+    item.sDecision?.status !==
     "PASS"
   ){
-
     return false;
   }
 
@@ -5309,7 +6055,6 @@ function historyMatches(
     item.confidence !==
     "S"
   ){
-
     return false;
   }
 
@@ -5321,7 +6066,17 @@ function historyMatches(
       item
     )
   ){
+    return false;
+  }
 
+  if(
+    historyFilter ===
+    "holehit"
+    &&
+    !isHoleHit(
+      item
+    )
+  ){
     return false;
   }
 
@@ -5331,14 +6086,11 @@ function historyMatches(
   ){
 
     if(
-      !item.result
-        ?.finished
-      ||
+      !item.result?.finished ||
       isHistoryHit(
         item
       )
     ){
-
       return false;
     }
   }
@@ -5350,7 +6102,6 @@ function historyMatches(
     String(item.date) !==
     todayApi()
   ){
-
     return false;
   }
 
@@ -5361,7 +6112,6 @@ function historyMatches(
     String(item.date) !==
     yesterdayApi()
   ){
-
     return false;
   }
 
@@ -5373,8 +6123,7 @@ function compactResultText(
 ){
 
   if(
-    !item.result
-      ?.finished
+    !item.result?.finished
   ){
 
     return "結果待ち";
@@ -5384,6 +6133,10 @@ function compactResultText(
     item.result
       .comparison;
 
+  const hole =
+    item.result
+      .hole;
+
   return `
     結果 ${item.result.combination}
     /
@@ -5392,6 +6145,11 @@ function compactResultText(
     6点${c?.p6?.hit ? "○" : "×"}
     10点${c?.p10?.hit ? "○" : "×"}
     15点${c?.p15?.hit ? "○" : "×"}
+    ${
+      hole
+        ? `/ 穴${hole.hit ? "💥" : "×"}`
+        : ""
+    }
   `;
 }
 
@@ -5422,8 +6180,7 @@ function historyDetailHtml(
   `;
 
   if(
-    item.result
-      ?.finished
+    item.result?.finished
   ){
 
     const r =
@@ -5437,6 +6194,9 @@ function historyDetailHtml(
 
     const ar =
       r.actualRank;
+
+    const hole =
+      r.hole;
 
     resultHtml = `
       <div class="result">
@@ -5473,21 +6233,66 @@ function historyDetailHtml(
 
         <br>
 
-        6点：
+        本線6点：
         ${c?.p6?.hit ? "🎯" : "×"}
+        /
         ${yen(c?.p6?.profit)}
 
         <br>
 
-        10点：
+        本線10点：
         ${c?.p10?.hit ? "🎯" : "×"}
+        /
         ${yen(c?.p10?.profit)}
 
         <br>
 
-        15点：
+        本線15点：
         ${c?.p15?.hit ? "🎯" : "×"}
+        /
         ${yen(c?.p15?.profit)}
+
+        ${
+          hole
+            ? `
+              <div class="hole-result">
+
+                🎯 穴狙い
+                ${hole.count}点
+
+                <br>
+
+                ${
+                  hole.hit
+                    ? "💥 穴的中！"
+                    : "× 不的中"
+                }
+
+                <br>
+
+                購入：
+                ${yen(hole.stake)}
+
+                <br>
+
+                払戻：
+                ${yen(hole.returnAmount)}
+
+                <br>
+
+                収支：
+                ${hole.profit >= 0 ? "+" : ""}
+                ${yen(hole.profit)}
+
+                <br>
+
+                回収率：
+                ${hole.roi.toFixed(1)}%
+
+              </div>
+            `
+            : ""
+        }
 
         ${
           d
@@ -5519,6 +6324,22 @@ function historyDetailHtml(
     `;
   }
 
+  const holeList =
+    Array.isArray(
+      item.holeBets
+    )
+    &&
+    item.holeBets.length
+
+      ? item.holeBets
+          .map(
+            x =>
+              `${x.combination}(${x.tier?.label || "穴"})`
+          )
+          .join(" / ")
+
+      : "なし";
+
   return `
     <div class="history-meta">
 
@@ -5547,8 +6368,18 @@ function historyDetailHtml(
 
       <br>
 
-      保存点数：
-      ${item.bets?.length || 0}
+      本線：
+      ${item.bets?.length || 0}点
+
+      <br>
+
+      🎯 穴狙い：
+      ${item.holeBets?.length || 0}点
+
+      <br>
+
+      穴買い目：
+      ${holeList}
 
     </div>
 
@@ -5580,7 +6411,6 @@ function toggleHistory(
 function renderHistory(){
 
   renderComparisons();
-
   renderWeights();
 
   const entries =
@@ -5632,8 +6462,7 @@ function renderHistory(){
               .has(id);
 
           const status =
-            item.sDecision
-              ?.status;
+            item.sDecision?.status;
 
           const badge =
             status === "BET"
@@ -6009,11 +6838,9 @@ $("savePrediction")
 
 $("checkAllResults")
   .onclick =
-    ()=>checkAllResults(false);
-
-/*
-  日付変更時は古いキャッシュ削除
-*/
+    ()=>checkAllResults(
+      false
+    );
 
 dateInput.addEventListener(
   "change",
@@ -6034,10 +6861,6 @@ dateInput.addEventListener(
       "";
   }
 );
-
-/*
-  会場変更時もキャッシュリセット
-*/
 
 venueSelect.addEventListener(
   "change",
@@ -6119,7 +6942,8 @@ document
                 x.classList.remove(
                   "active",
                   "battle-active",
-                  "pass-active"
+                  "pass-active",
+                  "hole-active"
                 )
             );
 
@@ -6139,6 +6963,15 @@ document
 
             button.classList.add(
               "pass-active"
+            );
+
+          }else if(
+            historyFilter ===
+            "holehit"
+          ){
+
+            button.classList.add(
+              "hole-active"
             );
 
           }else{
