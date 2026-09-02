@@ -35,7 +35,7 @@ async function officialFetch(path) {
   const response = await fetch(OFFICIAL + path, {
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; BoatRacingAI/5.8.1)",
+        "Mozilla/5.0 (compatible; BoatRacingAI/6.0)",
       "accept":
         "text/html,application/xhtml+xml"
     }
@@ -113,7 +113,7 @@ function value(v) {
     : null;
 }
 
-/* 開催場 */
+/* 開催場取得 */
 
 async function venues(hd) {
   const html = await officialFetch(
@@ -134,7 +134,7 @@ async function venues(hd) {
     }));
 }
 
-/* 1R〜12R */
+/* 1R〜12R取得 */
 
 async function venueData(hd, jcd) {
   const html = await officialFetch(
@@ -142,14 +142,14 @@ async function venueData(hd, jcd) {
   );
 
   const text = stripHtml(html);
+
   const races = [];
 
   for (let rno = 1; rno <= 12; rno++) {
-    const raceRegex =
-      new RegExp(
-        `(?:^|\\s)${rno}R(?:\\s|$)`,
-        "i"
-      );
+    const raceRegex = new RegExp(
+      `(?:^|\\s)${rno}R(?:\\s|$)`,
+      "i"
+    );
 
     if (
       raceRegex.test(text) ||
@@ -170,13 +170,11 @@ async function venueData(hd, jcd) {
   };
 }
 
-/*
-  V5.7で動いていた選手解析。
-  ここは直前情報と分離。
-*/
+/* 選手データ */
 
 function parseRacers(html) {
   const text = stripHtml(html);
+
   const racers = [];
 
   const num =
@@ -282,51 +280,21 @@ async function raceData(hd, jcd, rno) {
 
   const parsed = parseRacers(html);
 
-  let debug = null;
-
-  if (parsed.racers.length === 0) {
-    debug = {
-      message:
-        "選手データ解析に失敗しました",
-
-      candidates: [
-        ...parsed.text.matchAll(
-          /(\d{4})\s*\/\s*(A1|A2|B1|B2)/g
-        )
-      ]
-        .slice(0, 6)
-        .map(m => ({
-          registration: m[1],
-          class: m[2]
-        }))
-    };
-  }
-
   return {
     hd,
     jcd,
     venue: VENUE_NAMES[jcd] || jcd,
     rno: Number(rno),
-    racers: parsed.racers,
-    debug
+    racers: parsed.racers
   };
 }
 
-/*
-  V5.8.1 直前情報
-
-  選手情報とは別APIにする。
-*/
+/* 直前情報 */
 
 function parseBeforeInfo(html) {
   const text = stripHtml(html);
 
   const racers = [];
-
-  /*
-    公式ページの表示例：
-    1 折下 寛法 51.0kg 6.93 0.0
-  */
 
   const racerRegex =
     /(?:^|\s)([1-6])\s+(.+?)\s+(\d+(?:\.\d+)?)kg\s+(\d+\.\d{2})\s+(-?\d+\.\d)/g;
@@ -339,9 +307,7 @@ function parseBeforeInfo(html) {
   ) {
     const lane = Number(match[1]);
 
-    if (
-      !racers.some(r => r.lane === lane)
-    ) {
+    if (!racers.some(r => r.lane === lane)) {
       racers.push({
         lane,
         name:
@@ -364,10 +330,6 @@ function parseBeforeInfo(html) {
     }
   }
 
-  /*
-    スタート展示部分だけを切り出す。
-  */
-
   const startIndex =
     text.indexOf("スタート展示");
 
@@ -379,19 +341,9 @@ function parseBeforeInfo(html) {
   if (startIndex >= 0) {
     startText =
       weatherIndex > startIndex
-        ? text.slice(
-            startIndex,
-            weatherIndex
-          )
+        ? text.slice(startIndex, weatherIndex)
         : text.slice(startIndex);
   }
-
-  /*
-    例：
-    1 .03
-    2 .06
-    ...
-  */
 
   const startRegex =
     /(?:^|\s)([1-6])\s+\.([0-9]{2})(?=\s|$)/g;
@@ -409,18 +361,11 @@ function parseBeforeInfo(html) {
     });
   }
 
-  /*
-    艇番順にスタート展示を合成。
-    枠なりならcourse=lane。
-  */
-
   racers.forEach((racer, index) => {
     const start = starts[index];
 
     if (start) {
-      racer.course =
-        start.course;
-
+      racer.course = start.course;
       racer.exhibitionST =
         start.exhibitionST;
     }
@@ -451,33 +396,17 @@ function parseBeforeInfo(html) {
 
     weather: {
       temperature:
-        temp
-          ? Number(temp[1])
-          : null,
+        temp ? Number(temp[1]) : null,
 
       windSpeed:
-        wind
-          ? Number(wind[1])
-          : null,
+        wind ? Number(wind[1]) : null,
 
       waterTemperature:
-        water
-          ? Number(water[1])
-          : null,
+        water ? Number(water[1]) : null,
 
       waveHeight:
-        wave
-          ? Number(wave[1])
-          : null
-    },
-
-    debug:
-      racers.length
-        ? null
-        : {
-            message:
-              "直前情報はまだ公開されていないか、解析できませんでした"
-          }
+        wave ? Number(wave[1]) : null
+    }
   };
 }
 
@@ -502,6 +431,345 @@ async function beforeData(
   };
 }
 
+/*
+  V6.0
+  3連単オッズ解析
+*/
+
+function cellText(html) {
+  return stripHtml(html)
+    .replace(/倍$/g, "")
+    .trim();
+}
+
+function expandTable(tableHtml) {
+  const rowMatches = [
+    ...tableHtml.matchAll(
+      /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+    )
+  ];
+
+  const pending = {};
+  const grid = [];
+
+  for (const rowMatch of rowMatches) {
+    const rowHtml = rowMatch[1];
+
+    const cells = [
+      ...rowHtml.matchAll(
+        /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi
+      )
+    ];
+
+    const row = [];
+
+    let col = 0;
+
+    function usePending() {
+      while (pending[col]) {
+        row[col] =
+          pending[col].value;
+
+        pending[col].remaining--;
+
+        if (
+          pending[col].remaining <= 0
+        ) {
+          delete pending[col];
+        }
+
+        col++;
+      }
+    }
+
+    usePending();
+
+    for (const cell of cells) {
+      usePending();
+
+      const attrs =
+        cell[2] || "";
+
+      const text =
+        cellText(cell[3]);
+
+      const rowspanMatch =
+        attrs.match(
+          /rowspan\s*=\s*["']?(\d+)/i
+        );
+
+      const colspanMatch =
+        attrs.match(
+          /colspan\s*=\s*["']?(\d+)/i
+        );
+
+      const rowspan =
+        rowspanMatch
+          ? Number(rowspanMatch[1])
+          : 1;
+
+      const colspan =
+        colspanMatch
+          ? Number(colspanMatch[1])
+          : 1;
+
+      for (
+        let i = 0;
+        i < colspan;
+        i++
+      ) {
+        row[col] = text;
+
+        if (rowspan > 1) {
+          pending[col] = {
+            value: text,
+            remaining:
+              rowspan - 1
+          };
+        }
+
+        col++;
+      }
+    }
+
+    usePending();
+
+    grid.push(row);
+  }
+
+  return grid;
+}
+
+function isBoatNumber(v) {
+  return /^[1-6]$/.test(
+    String(v || "").trim()
+  );
+}
+
+function parseOdd(v) {
+  const text =
+    String(v || "")
+      .replace(/,/g, "")
+      .trim();
+
+  if (
+    !text ||
+    text === "-" ||
+    text === "欠場"
+  ) {
+    return null;
+  }
+
+  const n = Number(text);
+
+  return Number.isFinite(n)
+    ? n
+    : null;
+}
+
+function parseOdds(html) {
+  const tables = [
+    ...html.matchAll(
+      /<table\b[^>]*>([\s\S]*?)<\/table>/gi
+    )
+  ];
+
+  const oddsMap =
+    new Map();
+
+  for (const table of tables) {
+    const tableHtml =
+      table[0];
+
+    const grid =
+      expandTable(tableHtml);
+
+    for (const row of grid) {
+      /*
+        BOAT RACEの3連単表は
+        1着艇ごとに
+
+        2着 / 3着 / オッズ
+
+        の3列が横に6組並ぶ。
+      */
+
+      for (
+        let first = 1;
+        first <= 6;
+        first++
+      ) {
+        const base =
+          (first - 1) * 3;
+
+        const second =
+          row[base];
+
+        const third =
+          row[base + 1];
+
+        const odd =
+          parseOdd(
+            row[base + 2]
+          );
+
+        if (
+          !isBoatNumber(second) ||
+          !isBoatNumber(third) ||
+          odd === null
+        ) {
+          continue;
+        }
+
+        const secondNum =
+          Number(second);
+
+        const thirdNum =
+          Number(third);
+
+        if (
+          first === secondNum ||
+          first === thirdNum ||
+          secondNum === thirdNum
+        ) {
+          continue;
+        }
+
+        const combination =
+          `${first}-${secondNum}-${thirdNum}`;
+
+        oddsMap.set(
+          combination,
+          {
+            combination,
+            first,
+            second:
+              secondNum,
+            third:
+              thirdNum,
+            odds: odd
+          }
+        );
+      }
+    }
+  }
+
+  return [
+    ...oddsMap.values()
+  ].sort((a, b) => {
+    if (a.first !== b.first) {
+      return a.first - b.first;
+    }
+
+    if (a.second !== b.second) {
+      return a.second - b.second;
+    }
+
+    return a.third - b.third;
+  });
+}
+
+async function oddsData(
+  hd,
+  jcd,
+  rno
+) {
+  const html = await officialFetch(
+    `/owpc/pc/race/odds3t?hd=${hd}&jcd=${jcd}&rno=${rno}`
+  );
+
+  const odds =
+    parseOdds(html);
+
+  return {
+    hd,
+    jcd,
+    venue:
+      VENUE_NAMES[jcd] ||
+      jcd,
+
+    rno:
+      Number(rno),
+
+    type:
+      "3連単",
+
+    count:
+      odds.length,
+
+    odds,
+
+    debug:
+      odds.length >= 100
+        ? null
+        : {
+            message:
+              "オッズがまだ発売前、または解析できない組み合わせがあります"
+          }
+  };
+}
+
+/* 共通パラメータ確認 */
+
+function getRaceParams(url) {
+  const hd =
+    url.searchParams.get("hd") ||
+    todayJST();
+
+  const jcd =
+    url.searchParams.get("jcd");
+
+  const rno =
+    Number(
+      url.searchParams.get("rno")
+    );
+
+  return {
+    hd,
+    jcd,
+    rno
+  };
+}
+
+function validateRace(
+  jcd,
+  rno
+) {
+  if (
+    !jcd ||
+    !/^\d{2}$/.test(jcd)
+  ) {
+    return {
+      ok: false,
+      response:
+        json({
+          ok: false,
+          error: "jcdが必要です"
+        }, 400)
+    };
+  }
+
+  if (
+    !Number.isInteger(rno) ||
+    rno < 1 ||
+    rno > 12
+  ) {
+    return {
+      ok: false,
+      response:
+        json({
+          ok: false,
+          error:
+            "rnoは1〜12で指定してください"
+        }, 400)
+    };
+  }
+
+  return {
+    ok: true
+  };
+}
+
 /* Worker */
 
 export default {
@@ -517,7 +785,7 @@ export default {
       ) {
         return json({
           ok: true,
-          version: "5.8.1"
+          version: "6.0"
         });
       }
 
@@ -573,38 +841,21 @@ export default {
         url.pathname ===
         "/api/race"
       ) {
-        const hd =
-          url.searchParams.get("hd") ||
-          todayJST();
+        const {
+          hd,
+          jcd,
+          rno
+        } =
+          getRaceParams(url);
 
-        const jcd =
-          url.searchParams.get("jcd");
-
-        const rno =
-          Number(
-            url.searchParams.get("rno")
+        const check =
+          validateRace(
+            jcd,
+            rno
           );
 
-        if (
-          !jcd ||
-          !/^\d{2}$/.test(jcd)
-        ) {
-          return json({
-            ok: false,
-            error: "jcdが必要です"
-          }, 400);
-        }
-
-        if (
-          !Number.isInteger(rno) ||
-          rno < 1 ||
-          rno > 12
-        ) {
-          return json({
-            ok: false,
-            error:
-              "rnoは1〜12で指定してください"
-          }, 400);
+        if (!check.ok) {
+          return check.response;
         }
 
         return json({
@@ -619,52 +870,68 @@ export default {
         });
       }
 
-      /*
-        新しい直前情報API
-      */
-
       if (
         url.pathname ===
         "/api/before"
       ) {
-        const hd =
-          url.searchParams.get("hd") ||
-          todayJST();
+        const {
+          hd,
+          jcd,
+          rno
+        } =
+          getRaceParams(url);
 
-        const jcd =
-          url.searchParams.get("jcd");
-
-        const rno =
-          Number(
-            url.searchParams.get("rno")
+        const check =
+          validateRace(
+            jcd,
+            rno
           );
 
-        if (
-          !jcd ||
-          !/^\d{2}$/.test(jcd)
-        ) {
-          return json({
-            ok: false,
-            error: "jcdが必要です"
-          }, 400);
-        }
-
-        if (
-          !Number.isInteger(rno) ||
-          rno < 1 ||
-          rno > 12
-        ) {
-          return json({
-            ok: false,
-            error:
-              "rnoは1〜12で指定してください"
-          }, 400);
+        if (!check.ok) {
+          return check.response;
         }
 
         return json({
           ok: true,
           ...(
             await beforeData(
+              hd,
+              jcd,
+              rno
+            )
+          )
+        });
+      }
+
+      /*
+        新しい3連単オッズAPI
+      */
+
+      if (
+        url.pathname ===
+        "/api/odds"
+      ) {
+        const {
+          hd,
+          jcd,
+          rno
+        } =
+          getRaceParams(url);
+
+        const check =
+          validateRace(
+            jcd,
+            rno
+          );
+
+        if (!check.ok) {
+          return check.response;
+        }
+
+        return json({
+          ok: true,
+          ...(
+            await oddsData(
               hd,
               jcd,
               rno
