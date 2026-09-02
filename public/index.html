@@ -5,10 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0f172a">
 
-<title>競艇AI V6.6.4</title>
+<title>競艇AI V6.6.5</title>
 
 <style>
-*{box-sizing:border-box}
+*{
+  box-sizing:border-box;
+}
 
 body{
   margin:0;
@@ -330,26 +332,6 @@ button:disabled{
   font-size:18px;
 }
 
-.summary{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:8px;
-}
-
-.summary-item{
-  background:#0f172a;
-  border-radius:10px;
-  padding:10px;
-  text-align:center;
-  font-size:12px;
-}
-
-.summary-item strong{
-  display:block;
-  font-size:18px;
-  margin-top:4px;
-}
-
 .learn-row{
   background:#0f172a;
   border-radius:10px;
@@ -371,23 +353,125 @@ button:disabled{
   margin-top:5px;
 }
 
-.history{
+/* =========================
+   V6.6.5 履歴
+========================= */
+
+.history-controls{
   background:#0f172a;
   border-radius:12px;
-  padding:12px;
+  padding:10px;
   margin-bottom:10px;
 }
 
-.history-title{
-  font-size:16px;
-  font-weight:900;
-  margin-bottom:6px;
+.history-filter-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:6px;
+  margin-bottom:8px;
 }
 
-.history-meta{
+.history-period-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+}
+
+.filter-btn{
+  min-height:38px;
+  font-size:12px;
+  background:#334155;
+  padding:6px 4px;
+  margin:0;
+}
+
+.filter-btn.active{
+  background:#2563eb;
+}
+
+.filter-btn.s-active{
+  background:#dc2626;
+}
+
+.history-count{
+  color:#94a3b8;
+  font-size:12px;
+  padding:8px 2px 2px;
+}
+
+.history-item{
+  background:#0f172a;
+  border-radius:12px;
+  margin-bottom:9px;
+  overflow:hidden;
+}
+
+.history-item.s-history{
+  border:1px solid #dc2626;
+}
+
+.history-summary{
+  padding:12px;
+  cursor:pointer;
+}
+
+.history-summary:active{
+  opacity:.8;
+}
+
+.history-summary-top{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:center;
+}
+
+.history-race{
+  font-size:16px;
+  font-weight:900;
+}
+
+.history-badge{
+  padding:3px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  background:#334155;
+}
+
+.history-badge.s{
+  background:#dc2626;
+}
+
+.history-compact{
   color:#cbd5e1;
   font-size:12px;
   line-height:1.7;
+  margin-top:6px;
+}
+
+.history-arrow{
+  color:#94a3b8;
+  font-size:11px;
+  margin-top:5px;
+}
+
+.history-detail{
+  display:none;
+  padding:0 12px 12px;
+}
+
+.history-detail.open{
+  display:block;
+}
+
+.history-meta{
+  background:#1e293b;
+  border-radius:9px;
+  color:#cbd5e1;
+  font-size:12px;
+  line-height:1.7;
+  padding:9px;
 }
 
 .result{
@@ -423,6 +507,11 @@ button:disabled{
   margin-top:9px;
 }
 
+.load-more{
+  background:#334155;
+  margin-top:5px;
+}
+
 .notice{
   color:#94a3b8;
   font-size:12px;
@@ -443,10 +532,10 @@ button:disabled{
 
 <div class="wrap">
 
-<h1>競艇AI V6.6.4</h1>
+<h1>競艇AI V6.6.5</h1>
 
 <div class="sub">
-S評価レース抽出・120通り評価・実結果AI順位・6/10/15点比較
+S評価抽出・120通り評価・実結果AI順位・履歴折りたたみ
 </div>
 
 <div class="card">
@@ -531,11 +620,6 @@ S評価レースをまとめて保存
   id="sSaveStatus"
   class="status"
 ></div>
-
-<div class="notice">
-S評価になったレースだけを抽出します。
-過去日付の場合は検証用データとして扱います。
-</div>
 
 </div>
 
@@ -674,7 +758,81 @@ S評価になったレースだけを抽出します。
   class="status"
 ></div>
 
+<div class="history-controls">
+
+<div class="history-filter-grid">
+
+<button
+  class="filter-btn active"
+  data-history-filter="all"
+>
+すべて
+</button>
+
+<button
+  class="filter-btn"
+  data-history-filter="s"
+>
+🔥 S評価
+</button>
+
+<button
+  class="filter-btn"
+  data-history-filter="hit"
+>
+🎯 的中
+</button>
+
+<button
+  class="filter-btn"
+  data-history-filter="miss"
+>
+× 不的中
+</button>
+
+</div>
+
+<div class="history-period-grid">
+
+<button
+  class="filter-btn active"
+  data-history-period="all"
+>
+全期間
+</button>
+
+<button
+  class="filter-btn"
+  data-history-period="today"
+>
+今日
+</button>
+
+<button
+  class="filter-btn"
+  data-history-period="yesterday"
+>
+昨日
+</button>
+
+</div>
+
+<div
+  id="historyCount"
+  class="history-count"
+></div>
+
+</div>
+
 <div id="history"></div>
+
+<button
+  id="loadMoreHistory"
+  class="load-more"
+  style="display:none"
+>
+さらに5件見る
+</button>
 
 <button
   id="clearHistory"
@@ -686,7 +844,7 @@ S評価になったレースだけを抽出します。
 </div>
 
 <div class="version">
-Boat Racing AI V6.6.4
+Boat Racing AI V6.6.5
 </div>
 
 </div>
@@ -756,6 +914,12 @@ const weightStatus =
 const raceTitle =
   $("raceTitle");
 
+const historyCount =
+  $("historyCount");
+
+const loadMoreHistoryButton =
+  $("loadMoreHistory");
+
 let currentSnapshot =
   null;
 
@@ -764,6 +928,19 @@ let currentVenueRaces =
 
 let currentSRaces =
   [];
+
+/* 履歴画面 */
+let historyDisplayCount =
+  5;
+
+let historyFilter =
+  "all";
+
+let historyPeriod =
+  "all";
+
+const expandedHistoryIds =
+  new Set();
 
 /* =========================
    基本
@@ -794,6 +971,31 @@ function todayApi(){
 
   return todayLocal()
     .replaceAll("-","");
+}
+
+function yesterdayApi(){
+
+  const now =
+    new Date();
+
+  now.setDate(
+    now.getDate()-1
+  );
+
+  const y =
+    now.getFullYear();
+
+  const m =
+    String(
+      now.getMonth()+1
+    ).padStart(2,"0");
+
+  const d =
+    String(
+      now.getDate()
+    ).padStart(2,"0");
+
+  return `${y}${m}${d}`;
 }
 
 function apiDate(){
@@ -966,7 +1168,7 @@ function alreadySaved(
         String(
           item.version || ""
         ) ===
-          "6.6.4"
+          "6.6.5"
     );
 }
 
@@ -1347,11 +1549,6 @@ function getTrainableHistory(
           return false;
         }
 
-        /*
-          過去検証時に
-          未来の結果を混ぜない
-        */
-
         if(
           asOfDate &&
           String(item.date) >=
@@ -1411,8 +1608,7 @@ function calculateLearnedWeights(
     )
   ){
 
-    signals[key] =
-      [];
+    signals[key] = [];
   }
 
   for(
@@ -1440,8 +1636,7 @@ function calculateLearnedWeights(
           .map(
             r =>
               Number(
-                r.components
-                  ?.[key] ||
+                r.components?.[key] ||
                 0
               )
           );
@@ -1459,8 +1654,7 @@ function calculateLearnedWeights(
           .map(
             r =>
               Number(
-                r.components
-                  ?.[key] ||
+                r.components?.[key] ||
                 0
               )
           );
@@ -1520,9 +1714,7 @@ function calculateLearnedWeights(
       !arr.length
     ){
 
-      weights[key] =
-        1;
-
+      weights[key] = 1;
       continue;
     }
 
@@ -1593,7 +1785,7 @@ const ROLE_WEIGHTS = {
     st:.85,
     motor:1.15,
     exhibition:1.15,
-    exhibitionST:1.00,
+    exhibitionST:1,
     course:.75
   },
 
@@ -1617,7 +1809,8 @@ function roleScore(
   role
 ){
 
-  let score = 0;
+  let score =
+    0;
 
   for(
     const key of
@@ -1664,7 +1857,8 @@ function overallScore(
   learningWeights
 ){
 
-  let score = 0;
+  let score =
+    0;
 
   for(
     const key of
@@ -1703,7 +1897,8 @@ function overallScore(
 
 function makeAllCombinations(){
 
-  const list = [];
+  const list =
+    [];
 
   for(
     let first=1;
@@ -1813,15 +2008,14 @@ function trifectaProbability(
     );
 
   const secondTotal =
-    secondCandidates
-      .reduce(
-        (sum,r)=>
-          sum +
-          strength(
-            r.secondScore
-          ),
-        0
-      );
+    secondCandidates.reduce(
+      (sum,r)=>
+        sum +
+        strength(
+          r.secondScore
+        ),
+      0
+    );
 
   const p2 =
     strength(
@@ -1838,15 +2032,14 @@ function trifectaProbability(
     );
 
   const thirdTotal =
-    thirdCandidates
-      .reduce(
-        (sum,r)=>
-          sum +
-          strength(
-            r.thirdScore
-          ),
-        0
-      );
+    thirdCandidates.reduce(
+      (sum,r)=>
+        sum +
+        strength(
+          r.thirdScore
+        ),
+      0
+    );
 
   const p3 =
     strength(
@@ -1886,7 +2079,7 @@ function makeOddsMap(
 }
 
 /* =========================
-   120通りAI評価
+   120通り評価
 ========================= */
 
 function evaluateBets(
@@ -1899,7 +2092,8 @@ function evaluateBets(
       oddsData
     );
 
-  const candidates = [];
+  const candidates =
+    [];
 
   for(
     const combination of
@@ -1993,7 +2187,8 @@ function evaluateBets(
   const maxFirst =
     Math.max(
       ...candidates.map(
-        x => x.firstRole
+        x =>
+          x.firstRole
       ),
       1
     );
@@ -2001,7 +2196,8 @@ function evaluateBets(
   const maxSecond =
     Math.max(
       ...candidates.map(
-        x => x.secondRole
+        x =>
+          x.secondRole
       ),
       1
     );
@@ -2009,7 +2205,8 @@ function evaluateBets(
   const maxThird =
     Math.max(
       ...candidates.map(
-        x => x.thirdRole
+        x =>
+          x.thirdRole
       ),
       1
     );
@@ -2017,7 +2214,8 @@ function evaluateBets(
   const maxProbability =
     Math.max(
       ...candidates.map(
-        x => x.probability
+        x =>
+          x.probability
       ),
       .000001
     );
@@ -2274,7 +2472,7 @@ function buildPrediction(
       `${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
 
     version:
-      "6.6.4",
+      "6.6.5",
 
     createdAt:
       new Date()
@@ -2449,8 +2647,7 @@ function renderPredictionBuilt(
 
         <br>
 
-        120通りすべてを評価し、
-        予想時の順位を保存します。
+        120通りすべてをAI評価。
 
         ${
           firstTop
@@ -2706,16 +2903,14 @@ function renderRacers(
         <div class="stat">
           全国勝率：
           ${fmt(
-            racer.national
-              ?.winRate
+            racer.national?.winRate
           )}
         </div>
 
         <div class="stat">
           当地勝率：
           ${fmt(
-            racer.local
-              ?.winRate
+            racer.local?.winRate
           )}
         </div>
 
@@ -2729,24 +2924,21 @@ function renderRacers(
         <div class="stat">
           モーター2連率：
           ${fmt(
-            racer.motor
-              ?.secondRate
+            racer.motor?.secondRate
           )}%
         </div>
 
         <div class="stat">
           展示：
           ${fmt(
-            racer.before
-              ?.exhibitionTime
+            racer.before?.exhibitionTime
           )}
         </div>
 
         <div class="stat">
           展示ST：
           ${fmt(
-            racer.before
-              ?.exhibitionST
+            racer.before?.exhibitionST
           )}
         </div>
 
@@ -2761,7 +2953,7 @@ function renderRacers(
 }
 
 /* =========================
-   APIから1R予想
+   APIから予想
 ========================= */
 
 async function getPredictionData(
@@ -2916,13 +3108,9 @@ async function scanSRaces(){
     sScanStatus.textContent =
       `${rno}RをAI評価中… ${i+1}/${currentVenueRaces.length}`;
 
-    /*
-      今日の場合だけ
-      終了済みレースを除外
-    */
-
     if(
-      date === todayApi()
+      date ===
+      todayApi()
     ){
 
       try{
@@ -3112,6 +3300,7 @@ function openSRace(
     `🔥 ${item.rno}RはS評価です`;
 
   window.scrollTo({
+
     top:
       racersBox
         .getBoundingClientRect()
@@ -3127,7 +3316,7 @@ function openSRace(
 }
 
 /* =========================
-   S評価まとめて保存
+   保存
 ========================= */
 
 function makeSavedItem(
@@ -3219,8 +3408,13 @@ async function saveAllSRaces(){
     }
 
     const mode =
-      String(snapshot.date) <
-      String(todayApi())
+      String(
+        snapshot.date
+      )
+      <
+      String(
+        todayApi()
+      )
 
         ? "s-backtest"
 
@@ -3247,12 +3441,8 @@ async function saveAllSRaces(){
     保存済み：${duplicate}R
   `;
 
-  renderHistory();
+  resetHistoryView();
 }
-
-/* =========================
-   手動保存
-========================= */
 
 function saveCurrentPrediction(){
 
@@ -3275,7 +3465,7 @@ function saveCurrentPrediction(){
   ){
 
     saveStatus.textContent =
-      "V6.6.4ではこのレースは保存済みです";
+      "V6.6.5ではこのレースは保存済みです";
 
     return;
   }
@@ -3327,7 +3517,7 @@ function saveCurrentPrediction(){
   saveStatus.textContent =
     `${currentSnapshot.venue} ${currentSnapshot.rno}Rを保存しました`;
 
-  renderHistory();
+  resetHistoryView();
 }
 
 /* =========================
@@ -3839,7 +4029,7 @@ async function checkAllResults(
 }
 
 /* =========================
-   6/10/15比較
+   実績比較
 ========================= */
 
 function comparisonData(
@@ -4142,7 +4332,503 @@ function renderWeights(){
 }
 
 /* =========================
-   履歴
+   V6.6.5 履歴フィルター
+========================= */
+
+function resetHistoryView(){
+
+  historyDisplayCount =
+    5;
+
+  renderHistory();
+}
+
+function historyItemKey(
+  item,
+  originalIndex
+){
+
+  return item.id ||
+    `legacy-${originalIndex}`;
+}
+
+function isHistoryHit(
+  item
+){
+
+  if(
+    !item.result?.finished
+  ){
+
+    return false;
+  }
+
+  if(
+    item.result
+      ?.comparison
+      ?.p15
+  ){
+
+    return Boolean(
+      item.result
+        .comparison
+        .p15
+        .hit
+    );
+  }
+
+  return Boolean(
+    item.result.hit
+  );
+}
+
+function historyMatchesFilter(
+  item
+){
+
+  if(
+    historyFilter === "s" &&
+    item.confidence !== "S"
+  ){
+
+    return false;
+  }
+
+  if(
+    historyFilter === "hit" &&
+    !isHistoryHit(item)
+  ){
+
+    return false;
+  }
+
+  if(
+    historyFilter === "miss"
+  ){
+
+    if(
+      !item.result?.finished
+    ){
+
+      return false;
+    }
+
+    if(
+      isHistoryHit(item)
+    ){
+
+      return false;
+    }
+  }
+
+  if(
+    historyPeriod === "today" &&
+    String(item.date) !==
+    String(todayApi())
+  ){
+
+    return false;
+  }
+
+  if(
+    historyPeriod === "yesterday" &&
+    String(item.date) !==
+    String(yesterdayApi())
+  ){
+
+    return false;
+  }
+
+  return true;
+}
+
+function toggleHistory(
+  key
+){
+
+  if(
+    expandedHistoryIds.has(
+      key
+    )
+  ){
+
+    expandedHistoryIds.delete(
+      key
+    );
+
+  }else{
+
+    expandedHistoryIds.add(
+      key
+    );
+  }
+
+  renderHistory();
+}
+
+function compactResultText(
+  item
+){
+
+  if(
+    !item.result?.finished
+  ){
+
+    return "結果待ち";
+  }
+
+  const r =
+    item.result;
+
+  const c =
+    r.comparison;
+
+  const rank =
+    r.actualRank?.rank;
+
+  const rankText =
+    rank
+      ? `AI ${rank}位`
+      : "AI順位 -";
+
+  if(
+    !c
+  ){
+
+    return `
+      結果 ${r.combination || "-"}
+      / ${rankText}
+    `;
+  }
+
+  return `
+    結果 ${r.combination || "-"}
+    /
+    ${rankText}
+    /
+    6点${c.p6.hit ? "○" : "×"}
+    10点${c.p10.hit ? "○" : "×"}
+    15点${c.p15.hit ? "○" : "×"}
+  `;
+}
+
+/* =========================
+   履歴詳細
+========================= */
+
+function historyDetailHtml(
+  item
+){
+
+  let resultHtml = `
+    <div class="result">
+
+      結果未確認
+
+      <br><br>
+
+      ${
+        item.id
+          ? `
+            <button
+              onclick="checkOne('${item.id}')"
+            >
+              この結果を確認
+            </button>
+          `
+          : ""
+      }
+
+    </div>
+  `;
+
+  if(
+    item.result
+      ?.finished === false
+  ){
+
+    resultHtml = `
+      <div class="result">
+
+        まだ結果未確定
+
+        <br><br>
+
+        ${
+          item.id
+            ? `
+              <button
+                onclick="checkOne('${item.id}')"
+              >
+                もう一度確認
+              </button>
+            `
+            : ""
+        }
+
+      </div>
+    `;
+  }
+
+  if(
+    item.result
+      ?.finished
+  ){
+
+    const r =
+      item.result;
+
+    const c =
+      r.comparison;
+
+    const d =
+      r.diagnostics;
+
+    const ar =
+      r.actualRank;
+
+    let actualHtml =
+      "";
+
+    if(
+      ar?.rank
+    ){
+
+      actualHtml = `
+        <div class="actual-rank">
+
+          🎯 実結果のAI評価
+
+          <br>
+
+          <strong>
+            ${ar.rank}位 / ${ar.total}通り
+          </strong>
+
+          <br>
+
+          ${
+            ar.rank <= 6
+              ? "✅ 上位6点圏内"
+              : ar.rank <= 10
+                ? "🟣 上位10点圏内"
+                : ar.rank <= 15
+                  ? "🟡 上位15点圏内"
+                  : "❌ 上位15点圏外"
+          }
+
+          ${
+            Number.isFinite(
+              ar.totalScore
+            )
+              ? `
+                <br>
+                AI総合点：
+                ${ar.totalScore.toFixed(1)}
+
+                <br>
+                推定確率：
+                ${(ar.probability*100).toFixed(2)}%
+
+                <br>
+                オッズ：
+                ${ar.odds.toFixed(1)}
+
+                <br>
+                EV：
+                ${ar.ev.toFixed(2)}
+              `
+              : ""
+          }
+
+        </div>
+      `;
+
+    }else{
+
+      actualHtml = `
+        <div class="actual-rank">
+          この保存データには正確な120通り順位がありません
+        </div>
+      `;
+    }
+
+    resultHtml = `
+      <div class="result">
+
+        <div class="hit">
+
+          ${
+            item.confidence === "S"
+              ? "🔥 S評価 "
+              : ""
+          }
+
+          実結果：
+          ${r.combination}
+
+        </div>
+
+        100円払戻：
+        ${yen(
+          r.payoutPer100
+        )}
+
+        ${actualHtml}
+
+        ${
+          c
+            ? `
+              <br>
+
+              6点：
+              ${
+                c.p6.hit
+                  ? "🎯的中"
+                  : "×"
+              }
+
+              /
+              ${c.p6.profit >= 0 ? "+" : ""}
+              ${yen(c.p6.profit)}
+
+              <br>
+
+              10点：
+              ${
+                c.p10.hit
+                  ? "🎯的中"
+                  : "×"
+              }
+
+              /
+              ${c.p10.profit >= 0 ? "+" : ""}
+              ${yen(c.p10.profit)}
+
+              <br>
+
+              15点：
+              ${
+                c.p15.hit
+                  ? "🎯的中"
+                  : "×"
+              }
+
+              /
+              ${c.p15.profit >= 0 ? "+" : ""}
+              ${yen(c.p15.profit)}
+            `
+            : ""
+        }
+
+        ${
+          d
+            ? `
+              <div class="diagnostic">
+
+                🔍 着順別診断
+
+                <br>
+
+                1着
+                ${r.winningLanes[0]}号艇：
+                総合
+                ${d.overall[0] ?? "-"}位
+                /
+                1着適性
+                ${d.role.first ?? "-"}位
+
+                <br>
+
+                2着
+                ${r.winningLanes[1]}号艇：
+                総合
+                ${d.overall[1] ?? "-"}位
+                /
+                2着適性
+                ${d.role.second ?? "-"}位
+
+                <br>
+
+                3着
+                ${r.winningLanes[2]}号艇：
+                総合
+                ${d.overall[2] ?? "-"}位
+                /
+                3着適性
+                ${d.role.third ?? "-"}位
+
+              </div>
+            `
+            : ""
+        }
+
+      </div>
+    `;
+  }
+
+  return `
+    <div class="history-meta">
+
+      バージョン：
+      ${item.version || "旧版"}
+
+      <br>
+
+      勝負度：
+      ${item.confidence || "-"}
+
+      <br>
+
+      保存方式：
+      ${item.saveMode || "旧保存"}
+
+      <br>
+
+      AI評価：
+      ${item.evaluatedCount || "-"}通り
+
+      <br>
+
+      保存買い目：
+      ${item.bets?.length || 0}点
+
+      <br>
+
+      ${
+        Array.isArray(
+          item.allBetRanking
+        )
+          ? "✅ 120通り順位保存済み"
+          : "120通り順位なし"
+      }
+
+      ${
+        item.bets?.length
+          ? `
+            <br><br>
+            上位6点：
+            ${
+              item.bets
+                .slice(0,6)
+                .map(
+                  b =>
+                    b.combination
+                )
+                .join(" / ")
+            }
+          `
+          : ""
+      }
+
+    </div>
+
+    ${resultHtml}
+  `;
+}
+
+/* =========================
+   履歴表示
 ========================= */
 
 function renderHistory(){
@@ -4150,317 +4836,167 @@ function renderHistory(){
   const history =
     getHistory();
 
+  renderComparisons();
+  renderWeights();
+
   if(
     !history.length
   ){
 
+    historyCount.textContent =
+      "保存履歴 0件";
+
     historyBox.innerHTML =
       '<div class="status">保存履歴はまだありません</div>';
 
-    renderComparisons();
-    renderWeights();
+    loadMoreHistoryButton.style.display =
+      "none";
+
+    return;
+  }
+
+  const entries =
+    history
+      .map(
+        (item,index)=>({
+
+          item,
+
+          originalIndex:
+            index,
+
+          key:
+            historyItemKey(
+              item,
+              index
+            )
+        })
+      )
+      .reverse()
+      .filter(
+        entry =>
+          historyMatchesFilter(
+            entry.item
+          )
+      );
+
+  const visible =
+    entries.slice(
+      0,
+      historyDisplayCount
+    );
+
+  historyCount.textContent =
+    `該当 ${entries.length}件 / 表示 ${visible.length}件`;
+
+  if(
+    !entries.length
+  ){
+
+    historyBox.innerHTML = `
+      <div class="status">
+        条件に合う履歴はありません
+      </div>
+    `;
+
+    loadMoreHistoryButton.style.display =
+      "none";
 
     return;
   }
 
   historyBox.innerHTML =
-    history
-      .slice()
-      .reverse()
+    visible
       .map(
-        item=>{
+        entry=>{
 
-          let resultHtml = `
-            <div class="result">
+          const item =
+            entry.item;
 
-              結果未確認
+          const key =
+            entry.key;
 
-              <br><br>
-
-              <button
-                onclick="checkOne('${item.id}')"
-              >
-                この結果を確認
-              </button>
-
-            </div>
-          `;
-
-          if(
-            item.result
-              ?.finished === false
-          ){
-
-            resultHtml = `
-              <div class="result">
-
-                まだ結果未確定
-
-                <br><br>
-
-                <button
-                  onclick="checkOne('${item.id}')"
-                >
-                  もう一度確認
-                </button>
-
-              </div>
-            `;
-          }
-
-          if(
-            item.result
-              ?.finished
-          ){
-
-            const r =
-              item.result;
-
-            const c =
-              r.comparison;
-
-            const d =
-              r.diagnostics;
-
-            const ar =
-              r.actualRank;
-
-            let actualHtml =
-              "";
-
-            if(
-              ar?.rank
-            ){
-
-              actualHtml = `
-                <div class="actual-rank">
-
-                  🎯 実結果のAI評価
-
-                  <br>
-
-                  <strong>
-                    ${ar.rank}位 / ${ar.total}通り
-                  </strong>
-
-                  <br>
-
-                  ${
-                    ar.rank <= 6
-                      ? "✅ 上位6点圏内"
-                      : ar.rank <= 10
-                        ? "🟣 上位10点圏内"
-                        : ar.rank <= 15
-                          ? "🟡 上位15点圏内"
-                          : "❌ 上位15点圏外"
-                  }
-
-                  ${
-                    Number.isFinite(
-                      ar.totalScore
-                    )
-                      ? `
-                        <br>
-                        AI総合点：
-                        ${ar.totalScore.toFixed(1)}
-
-                        <br>
-                        推定確率：
-                        ${(ar.probability*100).toFixed(2)}%
-
-                        <br>
-                        オッズ：
-                        ${ar.odds.toFixed(1)}
-
-                        <br>
-                        EV：
-                        ${ar.ev.toFixed(2)}
-                      `
-                      : ""
-                  }
-
-                </div>
-              `;
-
-            }else{
-
-              actualHtml = `
-                <div class="actual-rank">
-                  この旧保存データには120通り順位がありません
-                </div>
-              `;
-            }
-
-            resultHtml = `
-              <div class="result">
-
-                <div class="hit">
-
-                  ${
-                    item.confidence === "S"
-                      ? "🔥 S評価 "
-                      : ""
-                  }
-
-                  実結果：
-                  ${r.combination}
-
-                </div>
-
-                100円払戻：
-                ${yen(
-                  r.payoutPer100
-                )}
-
-                ${actualHtml}
-
-                ${
-                  c
-                    ? `
-                      <br>
-
-                      6点：
-                      ${
-                        c.p6.hit
-                          ? "🎯的中"
-                          : "×"
-                      }
-
-                      /
-                      ${c.p6.profit >= 0 ? "+" : ""}
-                      ${yen(c.p6.profit)}
-
-                      <br>
-
-                      10点：
-                      ${
-                        c.p10.hit
-                          ? "🎯的中"
-                          : "×"
-                      }
-
-                      /
-                      ${c.p10.profit >= 0 ? "+" : ""}
-                      ${yen(c.p10.profit)}
-
-                      <br>
-
-                      15点：
-                      ${
-                        c.p15.hit
-                          ? "🎯的中"
-                          : "×"
-                      }
-
-                      /
-                      ${c.p15.profit >= 0 ? "+" : ""}
-                      ${yen(c.p15.profit)}
-                    `
-                    : ""
-                }
-
-                ${
-                  d
-                    ? `
-                      <div class="diagnostic">
-
-                        🔍 着順別診断
-
-                        <br>
-
-                        1着
-                        ${r.winningLanes[0]}号艇：
-                        総合
-                        ${d.overall[0] ?? "-"}位
-                        /
-                        1着適性
-                        ${d.role.first ?? "-"}位
-
-                        <br>
-
-                        2着
-                        ${r.winningLanes[1]}号艇：
-                        総合
-                        ${d.overall[1] ?? "-"}位
-                        /
-                        2着適性
-                        ${d.role.second ?? "-"}位
-
-                        <br>
-
-                        3着
-                        ${r.winningLanes[2]}号艇：
-                        総合
-                        ${d.overall[2] ?? "-"}位
-                        /
-                        3着適性
-                        ${d.role.third ?? "-"}位
-
-                      </div>
-                    `
-                    : ""
-                }
-
-              </div>
-            `;
-          }
+          const expanded =
+            expandedHistoryIds.has(
+              key
+            );
 
           return `
-            <div class="history">
+            <div class="
+              history-item
+              ${
+                item.confidence === "S"
+                  ? "s-history"
+                  : ""
+              }
+            ">
 
-              <div class="history-title">
+              <div
+                class="history-summary"
+                onclick="toggleHistory('${key}')"
+              >
 
+                <div class="history-summary-top">
+
+                  <div class="history-race">
+
+                    ${
+                      item.confidence === "S"
+                        ? "🔥 "
+                        : ""
+                    }
+
+                    ${item.date}
+                    ${item.venue || item.jcd}
+                    ${item.rno}R
+
+                  </div>
+
+                  <div class="
+                    history-badge
+                    ${
+                      item.confidence === "S"
+                        ? "s"
+                        : ""
+                    }
+                  ">
+
+                    ${item.confidence || "-"}
+
+                  </div>
+
+                </div>
+
+                <div class="history-compact">
+
+                  ${compactResultText(item)}
+
+                </div>
+
+                <div class="history-arrow">
+
+                  ${
+                    expanded
+                      ? "▲ 詳細を閉じる"
+                      : "▼ タップして詳細を見る"
+                  }
+
+                </div>
+
+              </div>
+
+              <div class="
+                history-detail
                 ${
-                  item.confidence ===
-                  "S"
-                    ? "🔥 "
+                  expanded
+                    ? "open"
                     : ""
                 }
+              ">
 
-                ${item.date}
-                ${item.venue || item.jcd}
-                ${item.rno}R
-
-              </div>
-
-              <div class="history-meta">
-
-                バージョン：
-                ${item.version || "旧版"}
-
-                <br>
-
-                勝負度：
-                ${item.confidence || "-"}
-
-                <br>
-
-                保存方式：
-                ${item.saveMode || "旧保存"}
-
-                <br>
-
-                AI評価：
-                ${item.evaluatedCount || "-"}通り
-
-                <br>
-
-                保存買い目：
-                ${item.bets?.length || 0}点
-
-                <br>
-
-                ${
-                  Array.isArray(
-                    item.allBetRanking
-                  )
-                    ? "✅ 120通り順位保存済み"
-                    : "120通り順位なし"
-                }
+                ${historyDetailHtml(item)}
 
               </div>
-
-              ${resultHtml}
 
             </div>
           `;
@@ -4468,8 +5004,22 @@ function renderHistory(){
       )
       .join("");
 
-  renderComparisons();
-  renderWeights();
+  if(
+    visible.length <
+    entries.length
+  ){
+
+    loadMoreHistoryButton.style.display =
+      "block";
+
+    loadMoreHistoryButton.textContent =
+      `さらに5件見る（残り${entries.length-visible.length}件）`;
+
+  }else{
+
+    loadMoreHistoryButton.style.display =
+      "none";
+  }
 }
 
 /* =========================
@@ -4746,7 +5296,7 @@ async function loadRace(
 }
 
 /* =========================
-   起動
+   イベント
 ========================= */
 
 dateInput.value =
@@ -4790,6 +5340,117 @@ $("checkAllResults")
     )
   );
 
+/* 履歴 種類フィルター */
+
+document
+  .querySelectorAll(
+    "[data-history-filter]"
+  )
+  .forEach(
+    button=>{
+
+      button.addEventListener(
+        "click",
+        ()=>{
+
+          historyFilter =
+            button.dataset
+              .historyFilter;
+
+          historyDisplayCount =
+            5;
+
+          document
+            .querySelectorAll(
+              "[data-history-filter]"
+            )
+            .forEach(
+              b =>{
+
+                b.classList.remove(
+                  "active"
+                );
+
+                b.classList.remove(
+                  "s-active"
+                );
+              }
+            );
+
+          if(
+            historyFilter === "s"
+          ){
+
+            button.classList.add(
+              "s-active"
+            );
+
+          }else{
+
+            button.classList.add(
+              "active"
+            );
+          }
+
+          renderHistory();
+        }
+      );
+    }
+  );
+
+/* 履歴 日付フィルター */
+
+document
+  .querySelectorAll(
+    "[data-history-period]"
+  )
+  .forEach(
+    button=>{
+
+      button.addEventListener(
+        "click",
+        ()=>{
+
+          historyPeriod =
+            button.dataset
+              .historyPeriod;
+
+          historyDisplayCount =
+            5;
+
+          document
+            .querySelectorAll(
+              "[data-history-period]"
+            )
+            .forEach(
+              b =>
+                b.classList.remove(
+                  "active"
+                )
+            );
+
+          button.classList.add(
+            "active"
+          );
+
+          renderHistory();
+        }
+      );
+    }
+  );
+
+loadMoreHistoryButton
+  .addEventListener(
+    "click",
+    ()=>{
+
+      historyDisplayCount +=
+        5;
+
+      renderHistory();
+    }
+  );
+
 $("clearHistory")
   .addEventListener(
     "click",
@@ -4805,6 +5466,11 @@ $("clearHistory")
           "boat_ai_predictions"
         );
 
+        expandedHistoryIds.clear();
+
+        historyDisplayCount =
+          5;
+
         renderHistory();
 
         saveStatus.textContent =
@@ -4812,6 +5478,10 @@ $("clearHistory")
       }
     }
   );
+
+/* =========================
+   起動
+========================= */
 
 renderHistory();
 
