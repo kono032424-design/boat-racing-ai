@@ -1,241 +1,492 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1220">
-<title>競艇AI V5.3</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111827" />
+  <title>競艇AI V5.5</title>
 
-<style>
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  background:#07101d;
-  color:#eef4ff
-}
-main{
-  max-width:760px;
-  margin:auto;
-  padding:22px 16px 80px
-}
-.card{
-  background:#101b2c;
-  border:1px solid #263650;
-  border-radius:18px;
-  padding:18px;
-  margin:14px 0
-}
-h1{font-size:28px;margin:8px 0}
-.muted{color:#9fb0c8}
-button,select,input{
-  font-size:16px;
-  border-radius:12px;
-  border:1px solid #40516b;
-  padding:12px;
-  background:#15243a;
-  color:#fff
-}
-button{
-  font-weight:700;
-  width:100%;
-  margin:8px 0
-}
-.ok{color:#8ee6a8}
-.err{color:#ff9b9b}
-.row{display:flex;gap:8px}
-.row>*{flex:1}
-.race{
-  padding:10px;
-  border-bottom:1px solid #273650
-}
-.badge{
-  display:inline-block;
-  padding:4px 8px;
-  border-radius:999px;
-  background:#223653;
-  font-size:12px
-}
-</style>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 18px 14px 40px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+    }
+
+    .sub {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      min-height: 46px;
+      border-radius: 10px;
+      border: 0;
+      font-size: 16px;
+    }
+
+    input,
+    select {
+      padding: 10px 12px;
+      background: #fff;
+      color: #111827;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 11px 12px;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #cbd5e1;
+      min-height: 20px;
+    }
+
+    .race-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .race-btn {
+      background: #334155;
+      margin: 0;
+    }
+
+    .race-btn.active {
+      background: #2563eb;
+    }
+
+    .race-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .racer {
+      background: #0f172a;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .lane {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 18px;
+      background: #e2e8f0;
+      color: #111827;
+    }
+
+    .racer-name {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .racer-meta {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-top: 3px;
+    }
+
+    .empty {
+      color: #94a3b8;
+      font-size: 14px;
+      padding: 10px 0;
+    }
+
+    .version {
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 24px;
+    }
+  </style>
 </head>
 
 <body>
-<main>
+  <div class="wrap">
 
-<h1>🚤 競艇AI V5.3</h1>
-<p class="muted">Cloudflare Workers + GitHub版</p>
+    <h1>競艇AI V5.5</h1>
+    <div class="sub">
+      開催場・レース・選手データ取得版
+    </div>
 
-<div class="card">
+    <div class="card">
+      <label for="date">日付</label>
+      <input id="date" type="date" />
 
-<div class="row">
-<input id="date" type="date">
-<button id="venues">開催場を取得</button>
-</div>
+      <button id="loadVenues">
+        開催場を取得
+      </button>
 
-<p id="status" class="muted">準備OK</p>
+      <div id="venueStatus" class="status"></div>
 
-<select id="venue" style="width:100%">
-<option value="">開催場を選択</option>
-</select>
+      <label for="venue">開催場</label>
+      <select id="venue">
+        <option value="">
+          開催場を選択
+        </option>
+      </select>
 
-<button id="load">
-選択した開催場のレースを取得
-</button>
+      <button id="loadRaces">
+        選択した開催場のレースを取得
+      </button>
 
-</div>
+      <div id="raceStatus" class="status"></div>
+    </div>
 
-<div class="card">
-<b>取得結果</b>
-<div id="out" class="muted">
-まだ取得していません。
-</div>
-</div>
+    <div class="card">
+      <div class="race-title">
+        レース一覧
+      </div>
 
-<div class="card">
-<span class="badge">V5.3</span>
-<p class="muted">
-開催場取得 → レース取得までを安定化したバージョンです。
-</p>
-</div>
+      <div id="raceGrid" class="race-grid"></div>
+    </div>
 
-<script>
+    <div class="card">
+      <div class="race-title" id="selectedRaceTitle">
+        選手情報
+      </div>
 
-const $ = s => document.querySelector(s);
+      <div id="racerStatus" class="status">
+        レースを選択してください
+      </div>
 
-const jst =
-new Date(Date.now()+9*3600000)
-.toISOString()
-.slice(0,10);
+      <div id="racers"></div>
+    </div>
 
-$("#date").value = jst;
+    <div class="version">
+      Boat Racing AI V5.5
+    </div>
 
-async function getJSON(url){
+  </div>
 
- const c = new AbortController();
+  <script>
+    const $ = id =>
+      document.getElementById(id);
 
- const t =
- setTimeout(()=>c.abort(),12000);
+    const dateInput = $("date");
+    const venueSelect = $("venue");
+    const loadVenuesBtn = $("loadVenues");
+    const loadRacesBtn = $("loadRaces");
 
- try{
+    const venueStatus = $("venueStatus");
+    const raceStatus = $("raceStatus");
+    const racerStatus = $("racerStatus");
 
-  const r =
-  await fetch(url,{signal:c.signal});
+    const raceGrid = $("raceGrid");
+    const racersBox = $("racers");
+    const selectedRaceTitle =
+      $("selectedRaceTitle");
 
-  const x =
-  await r.json();
+    let selectedRace = null;
 
-  if(!r.ok || !x.ok)
-  throw new Error(
-   x.error || `HTTP ${r.status}`
-  );
+    function todayLocal() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(
+        now.getMonth() + 1
+      ).padStart(2, "0");
 
-  return x;
+      const d = String(
+        now.getDate()
+      ).padStart(2, "0");
 
- } finally {
+      return `${y}-${m}-${d}`;
+    }
 
-  clearTimeout(t);
+    function apiDate() {
+      return dateInput.value
+        .replaceAll("-", "");
+    }
 
- }
+    async function getJSON(url) {
+      const controller =
+        new AbortController();
 
-}
+      const timer = setTimeout(
+        () => controller.abort(),
+        12000
+      );
 
-$("#venues").onclick =
-async()=>{
+      try {
+        const response = await fetch(
+          url,
+          {
+            signal: controller.signal,
+            cache: "no-store"
+          }
+        );
 
- $("#status").textContent =
- "開催場を取得中…";
+        const data = await response.json();
 
- $("#status").className =
- "muted";
+        if (!response.ok || !data.ok) {
+          throw new Error(
+            data.error ||
+            `HTTP ${response.status}`
+          );
+        }
 
- try{
+        return data;
 
-  const hd =
-  $("#date").value.replaceAll("-","");
+      } finally {
+        clearTimeout(timer);
+      }
+    }
 
-  const x =
-  await getJSON(
-   `/api/venues?hd=${hd}`
-  );
+    function clearRaceArea() {
+      raceGrid.innerHTML = "";
+      racersBox.innerHTML = "";
+      selectedRace = null;
 
-  $("#venue").innerHTML =
-  '<option value="">開催場を選択</option>'+
-  x.venues.map(
-   v =>
-   `<option value="${v.jcd}">
-   ${v.name}
-   </option>`
-  ).join("");
+      selectedRaceTitle.textContent =
+        "選手情報";
 
-  $("#status").textContent =
-  `${x.venues.length}会場を取得しました`;
+      racerStatus.textContent =
+        "レースを選択してください";
+    }
 
-  $("#status").className =
-  "ok";
+    async function loadVenues() {
+      venueStatus.textContent =
+        "開催場を取得中...";
 
- }catch(e){
+      venueSelect.innerHTML =
+        '<option value="">開催場を選択</option>';
 
-  $("#status").textContent =
-  "取得失敗："+e.message;
+      clearRaceArea();
 
-  $("#status").className =
-  "err";
+      try {
+        const data = await getJSON(
+          `/api/venues?hd=${apiDate()}`
+        );
 
- }
+        for (const venue of data.venues) {
+          const option =
+            document.createElement("option");
 
-};
+          option.value = venue.jcd;
+          option.textContent =
+            `${venue.name}（${venue.jcd}）`;
 
-$("#load").onclick =
-async()=>{
+          venueSelect.appendChild(option);
+        }
 
- const jcd =
- $("#venue").value;
+        venueStatus.textContent =
+          `${data.venues.length}会場を取得しました`;
 
- if(!jcd){
+      } catch (error) {
+        venueStatus.textContent =
+          `取得失敗：${error.message}`;
+      }
+    }
 
-  $("#out").textContent =
-  "開催場を選んでください。";
+    async function loadRaces() {
+      const jcd = venueSelect.value;
 
-  return;
+      if (!jcd) {
+        raceStatus.textContent =
+          "開催場を選択してください";
+        return;
+      }
 
- }
+      raceStatus.textContent =
+        "レースを取得中...";
 
- $("#out").textContent =
- "レースを取得中…";
+      clearRaceArea();
 
- try{
+      try {
+        const data = await getJSON(
+          `/api/venue?hd=${apiDate()}&jcd=${jcd}`
+        );
 
-  const hd =
-  $("#date").value.replaceAll("-","");
+        if (!data.races.length) {
+          raceStatus.textContent =
+            "レース情報がありません";
+          return;
+        }
 
-  const x =
-  await getJSON(
-   `/api/venue?hd=${hd}&jcd=${jcd}`
-  );
+        raceStatus.textContent =
+          `${data.venue || ""} ${
+            data.races.length
+          }レースを取得しました`;
 
-  $("#out").innerHTML =
-  x.races.length
+        for (const race of data.races) {
+          const button =
+            document.createElement("button");
 
-  ? x.races.map(
-    r =>
-    `<div class="race">
-    <b>${r.rno}R</b>
-    　${r.status}
-    </div>`
-   ).join("")
+          button.className = "race-btn";
+          button.textContent =
+            `${race.rno}R`;
 
-  : "レースが見つかりませんでした。";
+          button.addEventListener(
+            "click",
+            () => loadRace(
+              race.rno,
+              button
+            )
+          );
 
- }catch(e){
+          raceGrid.appendChild(button);
+        }
 
-  $("#out").textContent =
-  "取得失敗："+e.message;
+      } catch (error) {
+        raceStatus.textContent =
+          `取得失敗：${error.message}`;
+      }
+    }
 
- }
+    async function loadRace(
+      rno,
+      button
+    ) {
+      const jcd = venueSelect.value;
 
-};
+      selectedRace = rno;
 
-</script>
+      document
+        .querySelectorAll(".race-btn")
+        .forEach(btn =>
+          btn.classList.remove("active")
+        );
 
-</main>
+      button.classList.add("active");
+
+      selectedRaceTitle.textContent =
+        `${rno}R 選手情報`;
+
+      racersBox.innerHTML = "";
+
+      racerStatus.textContent =
+        "選手データを取得中...";
+
+      try {
+        const data = await getJSON(
+          `/api/race?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
+        );
+
+        if (!data.racers.length) {
+          racerStatus.textContent =
+            "選手データを取得できませんでした";
+          return;
+        }
+
+        racerStatus.textContent =
+          `${data.racers.length}艇を取得しました`;
+
+        for (const racer of data.racers) {
+          const row =
+            document.createElement("div");
+
+          row.className = "racer";
+
+          const lane =
+            document.createElement("div");
+
+          lane.className = "lane";
+          lane.textContent = racer.lane;
+
+          const info =
+            document.createElement("div");
+
+          const name =
+            document.createElement("div");
+
+          name.className = "racer-name";
+          name.textContent = racer.name;
+
+          const meta =
+            document.createElement("div");
+
+          meta.className = "racer-meta";
+          meta.textContent =
+            `${racer.class} / 登録番号 ${racer.registration}`;
+
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          row.appendChild(lane);
+          row.appendChild(info);
+
+          racersBox.appendChild(row);
+        }
+
+      } catch (error) {
+        racerStatus.textContent =
+          `取得失敗：${error.message}`;
+      }
+    }
+
+    dateInput.value = todayLocal();
+
+    loadVenuesBtn.addEventListener(
+      "click",
+      loadVenues
+    );
+
+    loadRacesBtn.addEventListener(
+      "click",
+      loadRaces
+    );
+  </script>
 </body>
 </html>
