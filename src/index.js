@@ -17,7 +17,7 @@ function decodeHtml(text = "") {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, " ");
+    .replace(/&gt;/gi, ">");
 }
 
 function stripHtml(html = "") {
@@ -31,19 +31,18 @@ function stripHtml(html = "") {
     .trim();
 }
 
-function cleanName(text = "") {
-  return stripHtml(text)
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 async function officialFetch(path) {
-  const response = await fetch(OFFICIAL + path, {
-    headers: {
-      "user-agent": "Mozilla/5.0 (compatible; BoatRacingAI/5.5)",
-      "accept": "text/html,application/xhtml+xml"
+  const response = await fetch(
+    OFFICIAL + path,
+    {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (compatible; BoatRacingAI/5.7)",
+        "accept":
+          "text/html,application/xhtml+xml"
+      }
     }
-  });
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -55,12 +54,15 @@ async function officialFetch(path) {
 }
 
 function todayJST() {
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  })
+  return new Intl.DateTimeFormat(
+    "ja-JP",
+    {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  )
     .format(new Date())
     .replaceAll("/", "");
 }
@@ -92,16 +94,45 @@ const VENUE_NAMES = {
   "24":"大村"
 };
 
+const PREF =
+  "(?:北海道|青森|岩手|宮城|秋田|山形|福島|" +
+  "茨城|栃木|群馬|埼玉|千葉|東京|神奈川|" +
+  "新潟|富山|石川|福井|山梨|長野|岐阜|" +
+  "静岡|愛知|三重|滋賀|京都|大阪|兵庫|" +
+  "奈良|和歌山|鳥取|島根|岡山|広島|山口|" +
+  "徳島|香川|愛媛|高知|福岡|佐賀|長崎|" +
+  "熊本|大分|宮崎|鹿児島|沖縄)";
+
+function value(v) {
+  if (
+    v === undefined ||
+    v === null ||
+    v === "-"
+  ) {
+    return null;
+  }
+
+  const n = Number(v);
+
+  return Number.isFinite(n)
+    ? n
+    : null;
+}
+
 async function venues(hd) {
   const html = await officialFetch(
     `/owpc/pc/race/index?hd=${hd}`
   );
 
   const found = [
-    ...html.matchAll(/[?&]jcd=(\d{2})/g)
+    ...html.matchAll(
+      /[?&]jcd=(\d{2})/g
+    )
   ].map(m => m[1]);
 
-  const ids = [...new Set(found)];
+  const ids = [
+    ...new Set(found)
+  ];
 
   return ids
     .filter(jcd => VENUE_NAMES[jcd])
@@ -111,19 +142,28 @@ async function venues(hd) {
     }));
 }
 
-async function venueData(hd, jcd) {
+async function venueData(
+  hd,
+  jcd
+) {
   const html = await officialFetch(
     `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
   );
 
   const text = stripHtml(html);
+
   const races = [];
 
-  for (let rno = 1; rno <= 12; rno++) {
-    const raceRegex = new RegExp(
-      `(?:^|\\s)${rno}R(?:\\s|$)`,
-      "i"
-    );
+  for (
+    let rno = 1;
+    rno <= 12;
+    rno++
+  ) {
+    const raceRegex =
+      new RegExp(
+        `(?:^|\\s)${rno}R(?:\\s|$)`,
+        "i"
+      );
 
     if (
       raceRegex.test(text) ||
@@ -131,7 +171,8 @@ async function venueData(hd, jcd) {
     ) {
       races.push({
         rno,
-        status: "出走情報あり"
+        status:
+          "出走情報あり"
       });
     }
   }
@@ -139,321 +180,376 @@ async function venueData(hd, jcd) {
   return {
     hd,
     jcd,
-    venue: VENUE_NAMES[jcd] || jcd,
+    venue:
+      VENUE_NAMES[jcd] ||
+      jcd,
     races
   };
 }
 
-function addRacer(
-  racers,
-  registration,
-  className,
-  name
-) {
-  registration = String(registration || "").trim();
-  className = String(className || "").trim();
-  name = cleanName(name);
-
-  if (!/^\d{4}$/.test(registration)) return;
-
-  if (!/^(A1|A2|B1|B2)$/.test(className)) return;
-
-  if (!name) return;
-
-  if (
-    racers.some(
-      racer => racer.registration === registration
-    )
-  ) {
-    return;
-  }
-
-  racers.push({
-    lane: racers.length + 1,
-    registration,
-    class: className,
-    name
-  });
-}
-
-function parseRacersFromRawHtml(html) {
-  const racers = [];
-
-  /*
-   * 方法1
-   * 「登録番号 / 級別」から次の年齢表示までを
-   * 1選手のブロックとして取得。
-   */
-  const blockRegex =
-    /(\d{4})\s*\/\s*(A1|A2|B1|B2)([\s\S]{0,2500}?)(?:\d{1,2})歳\s*\/\s*[\d.]+kg/gi;
-
-  let match;
-
-  while (
-    (match = blockRegex.exec(html)) !== null &&
-    racers.length < 6
-  ) {
-    const registration = match[1];
-    const className = match[2];
-    const block = match[3];
-
-    let name = "";
-
-    /*
-     * 方法1-A
-     * 選手プロフィールへのリンクから氏名を取得。
-     */
-    const profilePatterns = [
-      new RegExp(
-        `<a[^>]+toban=${registration}[^>]*>([\\s\\S]*?)<\\/a>`,
-        "i"
-      ),
-      new RegExp(
-        `<a[^>]+racer[^>]*>([\\s\\S]*?)<\\/a>`,
-        "i"
-      )
-    ];
-
-    for (const pattern of profilePatterns) {
-      const nameMatch = block.match(pattern);
-
-      if (nameMatch) {
-        name = cleanName(nameMatch[1]);
-
-        if (name) break;
-      }
-    }
-
-    /*
-     * 方法1-B
-     * リンク構造が変わっていても、
-     * テキスト化した選手ブロックから氏名を探す。
-     */
-    if (!name) {
-      const blockText = stripHtml(block);
-
-      /*
-       * 氏名の直後に「支部/出身地」が来る構造を利用。
-       */
-      const locationMatch = blockText.match(
-        /(.+?)\s+(北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)\/(?:北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)/
-      );
-
-      if (locationMatch) {
-        name = locationMatch[1]
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-    }
-
-    addRacer(
-      racers,
-      registration,
-      className,
-      name
-    );
-  }
-
-  return racers;
-}
-
-function parseRacersFromText(html) {
-  const racers = [];
+function parseRacers(html) {
   const text = stripHtml(html);
 
-  /*
-   * 方法2
-   * ページ全体をテキスト化して、
-   * 4桁登録番号→級別→氏名→支部/出身
-   * の並びを探す。
-   */
-  const prefectures =
-    "(?:北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)";
+  const racers = [];
 
-  const regex = new RegExp(
-    `(\\d{4})\\s*\\/\\s*(A1|A2|B1|B2)\\s+(.+?)\\s+${prefectures}\\/${prefectures}\\s+\\d{1,2}歳`,
-    "g"
-  );
+  const num =
+    "(\\d+(?:\\.\\d+)?|-)";
+
+  const pattern =
+    "(\\d{4})\\s*\\/\\s*" +
+    "(A1|A2|B1|B2)\\s+" +
+
+    "(.+?)\\s+" +
+
+    `(${PREF}\\/${PREF})\\s+` +
+
+    "(\\d{1,2})歳\\s*\\/\\s*" +
+    "(\\d+(?:\\.\\d+)?)kg\\s+" +
+
+    "F(\\d+)\\s+" +
+    "L(\\d+)\\s+" +
+
+    num + "\\s+" +
+
+    num + "\\s+" +
+    num + "\\s+" +
+    num + "\\s+" +
+
+    num + "\\s+" +
+    num + "\\s+" +
+    num + "\\s+" +
+
+    "(\\d+)\\s+" +
+    num + "\\s+" +
+    num + "\\s+" +
+
+    "(\\d+)\\s+" +
+    num + "\\s+" +
+    num;
+
+  const regex =
+    new RegExp(
+      pattern,
+      "g"
+    );
 
   let match;
 
   while (
-    (match = regex.exec(text)) !== null &&
+    (
+      match =
+        regex.exec(text)
+    ) !== null &&
     racers.length < 6
   ) {
-    addRacer(
-      racers,
-      match[1],
-      match[2],
-      match[3]
-    );
+    const racer = {
+      lane:
+        racers.length + 1,
+
+      registration:
+        match[1],
+
+      class:
+        match[2],
+
+      name:
+        match[3]
+          .replace(
+            /\s+/g,
+            " "
+          )
+          .trim(),
+
+      branchOrigin:
+        match[4],
+
+      age:
+        value(match[5]),
+
+      weight:
+        value(match[6]),
+
+      fCount:
+        value(match[7]),
+
+      lCount:
+        value(match[8]),
+
+      avgST:
+        value(match[9]),
+
+      national: {
+        winRate:
+          value(match[10]),
+
+        secondRate:
+          value(match[11]),
+
+        thirdRate:
+          value(match[12])
+      },
+
+      local: {
+        winRate:
+          value(match[13]),
+
+        secondRate:
+          value(match[14]),
+
+        thirdRate:
+          value(match[15])
+      },
+
+      motor: {
+        number:
+          value(match[16]),
+
+        secondRate:
+          value(match[17]),
+
+        thirdRate:
+          value(match[18])
+      },
+
+      boat: {
+        number:
+          value(match[19]),
+
+        secondRate:
+          value(match[20]),
+
+        thirdRate:
+          value(match[21])
+      }
+    };
+
+    racers.push(racer);
   }
 
-  return racers;
+  return {
+    racers,
+    text
+  };
 }
 
-async function raceData(hd, jcd, rno) {
+async function raceData(
+  hd,
+  jcd,
+  rno
+) {
   const html = await officialFetch(
     `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
   );
 
-  let racers = parseRacersFromRawHtml(html);
+  const parsed =
+    parseRacers(html);
 
-  if (racers.length < 6) {
-    const textRacers = parseRacersFromText(html);
-
-    for (const racer of textRacers) {
-      addRacer(
-        racers,
-        racer.registration,
-        racer.class,
-        racer.name
-      );
-    }
-  }
-
-  racers = racers
-    .slice(0, 6)
-    .map((racer, index) => ({
-      ...racer,
-      lane: index + 1
-    }));
-
-  /*
-   * 0人の場合だけ原因確認用の一部情報を返す。
-   * 本番で取得できればdebugはnull。
-   */
   let debug = null;
 
-  if (racers.length === 0) {
-    const text = stripHtml(html);
-
-    const registrations = [
-      ...text.matchAll(
+  if (
+    parsed.racers.length === 0
+  ) {
+    const candidates = [
+      ...parsed.text.matchAll(
         /(\d{4})\s*\/\s*(A1|A2|B1|B2)/g
       )
     ]
-      .slice(0, 10)
-      .map(m => `${m[1]}/${m[2]}`);
+      .slice(0, 6)
+      .map(m => ({
+        registration:
+          m[1],
+        class:
+          m[2]
+      }));
 
     debug = {
-      htmlLength: html.length,
-      textLength: text.length,
-      registrationCandidates: registrations
+      message:
+        "選手データ解析に失敗しました",
+      candidates
     };
   }
 
   return {
     hd,
     jcd,
-    venue: VENUE_NAMES[jcd] || jcd,
-    rno: Number(rno),
-    racers,
+
+    venue:
+      VENUE_NAMES[jcd] ||
+      jcd,
+
+    rno:
+      Number(rno),
+
+    racers:
+      parsed.racers,
+
     debug
   };
 }
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+  async fetch(
+    request,
+    env
+  ) {
+    const url =
+      new URL(
+        request.url
+      );
 
     try {
-      if (url.pathname === "/api/health") {
+
+      if (
+        url.pathname ===
+        "/api/health"
+      ) {
         return json({
           ok: true,
-          version: "5.5"
+          version: "5.7"
         });
       }
 
-      if (url.pathname === "/api/venues") {
+      if (
+        url.pathname ===
+        "/api/venues"
+      ) {
         const hd =
-          url.searchParams.get("hd") ||
+          url.searchParams.get(
+            "hd"
+          ) ||
           todayJST();
 
         return json({
           ok: true,
           hd,
-          venues: await venues(hd)
+          venues:
+            await venues(hd)
         });
       }
 
-      if (url.pathname === "/api/venue") {
+      if (
+        url.pathname ===
+        "/api/venue"
+      ) {
         const hd =
-          url.searchParams.get("hd") ||
+          url.searchParams.get(
+            "hd"
+          ) ||
           todayJST();
 
         const jcd =
-          url.searchParams.get("jcd");
+          url.searchParams.get(
+            "jcd"
+          );
 
         if (
           !jcd ||
-          !/^\d{2}$/.test(jcd)
+          !/^\d{2}$/.test(
+            jcd
+          )
         ) {
-          return json({
-            ok: false,
-            error: "jcdが必要です"
-          }, 400);
+          return json(
+            {
+              ok: false,
+              error:
+                "jcdが必要です"
+            },
+            400
+          );
         }
 
         return json({
           ok: true,
-          ...(await venueData(hd, jcd))
+          ...(
+            await venueData(
+              hd,
+              jcd
+            )
+          )
         });
       }
 
-      if (url.pathname === "/api/race") {
+      if (
+        url.pathname ===
+        "/api/race"
+      ) {
         const hd =
-          url.searchParams.get("hd") ||
+          url.searchParams.get(
+            "hd"
+          ) ||
           todayJST();
 
         const jcd =
-          url.searchParams.get("jcd");
+          url.searchParams.get(
+            "jcd"
+          );
 
         const rno =
-          url.searchParams.get("rno");
+          Number(
+            url.searchParams.get(
+              "rno"
+            )
+          );
 
         if (
           !jcd ||
-          !/^\d{2}$/.test(jcd)
+          !/^\d{2}$/.test(
+            jcd
+          )
         ) {
-          return json({
-            ok: false,
-            error: "jcdが必要です"
-          }, 400);
+          return json(
+            {
+              ok: false,
+              error:
+                "jcdが必要です"
+            },
+            400
+          );
         }
 
-        const raceNumber = Number(rno);
-
         if (
-          !Number.isInteger(raceNumber) ||
-          raceNumber < 1 ||
-          raceNumber > 12
+          !Number.isInteger(
+            rno
+          ) ||
+          rno < 1 ||
+          rno > 12
         ) {
-          return json({
-            ok: false,
-            error: "rnoは1〜12で指定してください"
-          }, 400);
+          return json(
+            {
+              ok: false,
+              error:
+                "rnoは1〜12で指定してください"
+            },
+            400
+          );
         }
 
         return json({
           ok: true,
-          ...(await raceData(
-            hd,
-            jcd,
-            raceNumber
-          ))
+          ...(
+            await raceData(
+              hd,
+              jcd,
+              rno
+            )
+          )
         });
       }
 
-      return env.ASSETS.fetch(request);
+      return env.ASSETS.fetch(
+        request
+      );
 
-    } catch (e) {
-      return json({
-        ok: false,
-        error:
-          e?.message ||
-          String(e)
-      }, 502);
+    } catch (error) {
+      return json(
+        {
+          ok: false,
+          error:
+            error?.message ||
+            String(error)
+        },
+        502
+      );
     }
   }
 };
