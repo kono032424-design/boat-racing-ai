@@ -149,23 +149,17 @@ async function raceData(hd, jcd, rno) {
   const racers = [];
 
   const regex =
-    /(\d{4})\s*\/\s*(A1|A2|B1|B2)\s+(.+?)\s+([^\s/]+\/[^\s/]+)/g;
+    /(\d{4})\s*\/\s*(A1|A2|B1|B2)\s+([^\d]+?)\s+([^\s/]+\/[^\s/]+)\s+\d+歳/g;
 
   let match;
 
   while ((match = regex.exec(text)) !== null) {
-    const registration = match[1];
-    const className = match[2];
-    const name = match[3].replace(/\s+/g, " ").trim();
-
-    if (!racers.some(r => r.registration === registration)) {
-      racers.push({
-        lane: racers.length + 1,
-        registration,
-        class: className,
-        name
-      });
-    }
+    racers.push({
+      lane: racers.length + 1,
+      registration: match[1],
+      class: match[2],
+      name: match[3].replace(/\s+/g, " ").trim()
+    });
 
     if (racers.length === 6) break;
   }
@@ -177,16 +171,6 @@ async function raceData(hd, jcd, rno) {
     racers
   };
 }
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    try {
-      if (url.pathname === "/api/health") {
-        return json({
-          ok: true,
-          version: "5.4"
-        });
-      }
 
       if (url.pathname === "/api/venues") {
         const hd =
