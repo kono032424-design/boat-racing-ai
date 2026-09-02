@@ -35,7 +35,7 @@ async function officialFetch(path) {
   const response = await fetch(OFFICIAL + path, {
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; BoatRacingAI/6.0)",
+        "Mozilla/5.0 (compatible; BoatRacingAI/6.2)",
       "accept":
         "text/html,application/xhtml+xml"
     }
@@ -62,30 +62,12 @@ function todayJST() {
 }
 
 const VENUE_NAMES = {
-  "01":"桐生",
-  "02":"戸田",
-  "03":"江戸川",
-  "04":"平和島",
-  "05":"多摩川",
-  "06":"浜名湖",
-  "07":"蒲郡",
-  "08":"常滑",
-  "09":"津",
-  "10":"三国",
-  "11":"びわこ",
-  "12":"住之江",
-  "13":"尼崎",
-  "14":"鳴門",
-  "15":"丸亀",
-  "16":"児島",
-  "17":"宮島",
-  "18":"徳山",
-  "19":"下関",
-  "20":"若松",
-  "21":"芦屋",
-  "22":"福岡",
-  "23":"唐津",
-  "24":"大村"
+  "01":"桐生","02":"戸田","03":"江戸川","04":"平和島",
+  "05":"多摩川","06":"浜名湖","07":"蒲郡","08":"常滑",
+  "09":"津","10":"三国","11":"びわこ","12":"住之江",
+  "13":"尼崎","14":"鳴門","15":"丸亀","16":"児島",
+  "17":"宮島","18":"徳山","19":"下関","20":"若松",
+  "21":"芦屋","22":"福岡","23":"唐津","24":"大村"
 };
 
 const PREF =
@@ -113,7 +95,7 @@ function value(v) {
     : null;
 }
 
-/* 開催場取得 */
+/* 開催場 */
 
 async function venues(hd) {
   const html = await officialFetch(
@@ -134,7 +116,7 @@ async function venues(hd) {
     }));
 }
 
-/* 1R〜12R取得 */
+/* レース一覧 */
 
 async function venueData(hd, jcd) {
   const html = await officialFetch(
@@ -142,17 +124,16 @@ async function venueData(hd, jcd) {
   );
 
   const text = stripHtml(html);
-
   const races = [];
 
   for (let rno = 1; rno <= 12; rno++) {
-    const raceRegex = new RegExp(
+    const re = new RegExp(
       `(?:^|\\s)${rno}R(?:\\s|$)`,
       "i"
     );
 
     if (
-      raceRegex.test(text) ||
+      re.test(text) ||
       html.includes(`rno=${rno}`)
     ) {
       races.push({
@@ -174,7 +155,6 @@ async function venueData(hd, jcd) {
 
 function parseRacers(html) {
   const text = stripHtml(html);
-
   const racers = [];
 
   const num =
@@ -219,9 +199,7 @@ function parseRacers(html) {
   ) {
     racers.push({
       lane: racers.length + 1,
-
       registration: match[1],
-
       class: match[2],
 
       name:
@@ -230,15 +208,10 @@ function parseRacers(html) {
           .trim(),
 
       branchOrigin: match[4],
-
       age: value(match[5]),
-
       weight: value(match[6]),
-
       fCount: value(match[7]),
-
       lCount: value(match[8]),
-
       avgST: value(match[9]),
 
       national: {
@@ -267,10 +240,7 @@ function parseRacers(html) {
     });
   }
 
-  return {
-    racers,
-    text
-  };
+  return racers;
 }
 
 async function raceData(hd, jcd, rno) {
@@ -278,14 +248,12 @@ async function raceData(hd, jcd, rno) {
     `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
   );
 
-  const parsed = parseRacers(html);
-
   return {
     hd,
     jcd,
     venue: VENUE_NAMES[jcd] || jcd,
     rno: Number(rno),
-    racers: parsed.racers
+    racers: parseRacers(html)
   };
 }
 
@@ -293,7 +261,6 @@ async function raceData(hd, jcd, rno) {
 
 function parseBeforeInfo(html) {
   const text = stripHtml(html);
-
   const racers = [];
 
   const racerRegex =
@@ -316,15 +283,9 @@ function parseBeforeInfo(html) {
             .trim(),
 
         weight: value(match[3]),
-
-        exhibitionTime:
-          value(match[4]),
-
-        tilt:
-          value(match[5]),
-
+        exhibitionTime: value(match[4]),
+        tilt: value(match[5]),
         course: null,
-
         exhibitionST: null
       });
     }
@@ -410,31 +371,21 @@ function parseBeforeInfo(html) {
   };
 }
 
-async function beforeData(
-  hd,
-  jcd,
-  rno
-) {
+async function beforeData(hd, jcd, rno) {
   const html = await officialFetch(
     `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
   );
-
-  const parsed =
-    parseBeforeInfo(html);
 
   return {
     hd,
     jcd,
     venue: VENUE_NAMES[jcd] || jcd,
     rno: Number(rno),
-    ...parsed
+    ...parseBeforeInfo(html)
   };
 }
 
-/*
-  V6.0
-  3連単オッズ解析
-*/
+/* 3連単オッズ */
 
 function cellText(html) {
   return stripHtml(html)
@@ -453,16 +404,13 @@ function expandTable(tableHtml) {
   const grid = [];
 
   for (const rowMatch of rowMatches) {
-    const rowHtml = rowMatch[1];
-
     const cells = [
-      ...rowHtml.matchAll(
+      ...rowMatch[1].matchAll(
         /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi
       )
     ];
 
     const row = [];
-
     let col = 0;
 
     function usePending() {
@@ -523,8 +471,7 @@ function expandTable(tableHtml) {
         if (rowspan > 1) {
           pending[col] = {
             value: text,
-            remaining:
-              rowspan - 1
+            remaining: rowspan - 1
           };
         }
 
@@ -533,7 +480,6 @@ function expandTable(tableHtml) {
     }
 
     usePending();
-
     grid.push(row);
   }
 
@@ -578,22 +524,10 @@ function parseOdds(html) {
     new Map();
 
   for (const table of tables) {
-    const tableHtml =
-      table[0];
-
     const grid =
-      expandTable(tableHtml);
+      expandTable(table[0]);
 
     for (const row of grid) {
-      /*
-        BOAT RACEの3連単表は
-        1着艇ごとに
-
-        2着 / 3着 / オッズ
-
-        の3列が横に6組並ぶ。
-      */
-
       for (
         let first = 1;
         first <= 6;
@@ -643,10 +577,8 @@ function parseOdds(html) {
           {
             combination,
             first,
-            second:
-              secondNum,
-            third:
-              thirdNum,
+            second: secondNum,
+            third: thirdNum,
             odds: odd
           }
         );
@@ -656,24 +588,10 @@ function parseOdds(html) {
 
   return [
     ...oddsMap.values()
-  ].sort((a, b) => {
-    if (a.first !== b.first) {
-      return a.first - b.first;
-    }
-
-    if (a.second !== b.second) {
-      return a.second - b.second;
-    }
-
-    return a.third - b.third;
-  });
+  ];
 }
 
-async function oddsData(
-  hd,
-  jcd,
-  rno
-) {
+async function oddsData(hd, jcd, rno) {
   const html = await officialFetch(
     `/owpc/pc/race/odds3t?hd=${hd}&jcd=${jcd}&rno=${rno}`
   );
@@ -684,6 +602,194 @@ async function oddsData(
   return {
     hd,
     jcd,
+    venue: VENUE_NAMES[jcd] || jcd,
+    rno: Number(rno),
+    type: "3連単",
+    count: odds.length,
+    odds
+  };
+}
+
+/* V6.2 レース結果 */
+
+function normalizeCombination(text) {
+  const m =
+    String(text || "")
+      .match(
+        /([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])/
+      );
+
+  if (!m) {
+    return null;
+  }
+
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+function parseYen(text) {
+  const m =
+    String(text || "")
+      .match(
+        /[¥￥]?\s*([\d,]+)/
+      );
+
+  if (!m) {
+    return null;
+  }
+
+  const n =
+    Number(
+      m[1].replace(/,/g, "")
+    );
+
+  return Number.isFinite(n)
+    ? n
+    : null;
+}
+
+function parseResult(html) {
+  const text =
+    stripHtml(html);
+
+  /*
+    3連単結果・払戻
+  */
+
+  const trifectaMatch =
+    text.match(
+      /3連単\s+([1-6]\s*[-－]\s*[1-6]\s*[-－]\s*[1-6])\s+[¥￥]?\s*([\d,]+)/
+    );
+
+  const combination =
+    trifectaMatch
+      ? normalizeCombination(
+          trifectaMatch[1]
+        )
+      : null;
+
+  const payout =
+    trifectaMatch
+      ? parseYen(
+          trifectaMatch[2]
+        )
+      : null;
+
+  /*
+    着順。
+
+    「１ 1 3771 ...」
+    のような結果表から
+    1〜3着の艇番を取得。
+  */
+
+  const section =
+    text.includes("スタート情報")
+      ? text.split("スタート情報")[0]
+      : text;
+
+  const rankPatterns = [
+    {
+      rank: 1,
+      regex:
+        /(?:^|\s)(?:１|1)\s+([1-6])\s+\d{4}\s+/ 
+    },
+    {
+      rank: 2,
+      regex:
+        /(?:^|\s)(?:２|2)\s+([1-6])\s+\d{4}\s+/
+    },
+    {
+      rank: 3,
+      regex:
+        /(?:^|\s)(?:３|3)\s+([1-6])\s+\d{4}\s+/
+    }
+  ];
+
+  const order = [];
+
+  for (const item of rankPatterns) {
+    const m =
+      section.match(
+        item.regex
+      );
+
+    if (m) {
+      order.push(
+        Number(m[1])
+      );
+    }
+  }
+
+  /*
+    3連単があるならレース確定済み。
+  */
+
+  const finished =
+    Boolean(
+      combination &&
+      payout !== null
+    );
+
+  let winningLanes =
+    order;
+
+  if (
+    winningLanes.length < 3 &&
+    combination
+  ) {
+    winningLanes =
+      combination
+        .split("-")
+        .map(Number);
+  }
+
+  const methodMatch =
+    text.match(
+      /決まり手\s+(逃げ|差し|まくり|まくり差し|抜き|恵まれ)/
+    );
+
+  return {
+    finished,
+
+    combination:
+      finished
+        ? combination
+        : null,
+
+    payout:
+      finished
+        ? payout
+        : null,
+
+    winningLanes:
+      finished
+        ? winningLanes.slice(0, 3)
+        : [],
+
+    method:
+      methodMatch
+        ? methodMatch[1]
+        : null
+  };
+}
+
+async function resultData(
+  hd,
+  jcd,
+  rno
+) {
+  const html =
+    await officialFetch(
+      `/owpc/pc/race/raceresult?hd=${hd}&jcd=${jcd}&rno=${rno}`
+    );
+
+  const result =
+    parseResult(html);
+
+  return {
+    hd,
+    jcd,
+
     venue:
       VENUE_NAMES[jcd] ||
       jcd,
@@ -691,43 +797,25 @@ async function oddsData(
     rno:
       Number(rno),
 
-    type:
-      "3連単",
-
-    count:
-      odds.length,
-
-    odds,
-
-    debug:
-      odds.length >= 100
-        ? null
-        : {
-            message:
-              "オッズがまだ発売前、または解析できない組み合わせがあります"
-          }
+    ...result
   };
 }
 
-/* 共通パラメータ確認 */
+/* パラメータ */
 
 function getRaceParams(url) {
-  const hd =
-    url.searchParams.get("hd") ||
-    todayJST();
-
-  const jcd =
-    url.searchParams.get("jcd");
-
-  const rno =
-    Number(
-      url.searchParams.get("rno")
-    );
-
   return {
-    hd,
-    jcd,
-    rno
+    hd:
+      url.searchParams.get("hd") ||
+      todayJST(),
+
+    jcd:
+      url.searchParams.get("jcd"),
+
+    rno:
+      Number(
+        url.searchParams.get("rno")
+      )
   };
 }
 
@@ -739,14 +827,10 @@ function validateRace(
     !jcd ||
     !/^\d{2}$/.test(jcd)
   ) {
-    return {
+    return json({
       ok: false,
-      response:
-        json({
-          ok: false,
-          error: "jcdが必要です"
-        }, 400)
-    };
+      error: "jcdが必要です"
+    }, 400);
   }
 
   if (
@@ -754,20 +838,14 @@ function validateRace(
     rno < 1 ||
     rno > 12
   ) {
-    return {
+    return json({
       ok: false,
-      response:
-        json({
-          ok: false,
-          error:
-            "rnoは1〜12で指定してください"
-        }, 400)
-    };
+      error:
+        "rnoは1〜12で指定してください"
+    }, 400);
   }
 
-  return {
-    ok: true
-  };
+  return null;
 }
 
 /* Worker */
@@ -785,7 +863,7 @@ export default {
       ) {
         return json({
           ok: true,
-          version: "6.0"
+          version: "6.2"
         });
       }
 
@@ -848,14 +926,14 @@ export default {
         } =
           getRaceParams(url);
 
-        const check =
+        const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (!check.ok) {
-          return check.response;
+        if (error) {
+          return error;
         }
 
         return json({
@@ -881,14 +959,14 @@ export default {
         } =
           getRaceParams(url);
 
-        const check =
+        const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (!check.ok) {
-          return check.response;
+        if (error) {
+          return error;
         }
 
         return json({
@@ -903,10 +981,6 @@ export default {
         });
       }
 
-      /*
-        新しい3連単オッズAPI
-      */
-
       if (
         url.pathname ===
         "/api/odds"
@@ -918,20 +992,58 @@ export default {
         } =
           getRaceParams(url);
 
-        const check =
+        const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (!check.ok) {
-          return check.response;
+        if (error) {
+          return error;
         }
 
         return json({
           ok: true,
           ...(
             await oddsData(
+              hd,
+              jcd,
+              rno
+            )
+          )
+        });
+      }
+
+      /*
+        V6.2
+        結果取得
+      */
+
+      if (
+        url.pathname ===
+        "/api/result"
+      ) {
+        const {
+          hd,
+          jcd,
+          rno
+        } =
+          getRaceParams(url);
+
+        const error =
+          validateRace(
+            jcd,
+            rno
+          );
+
+        if (error) {
+          return error;
+        }
+
+        return json({
+          ok: true,
+          ...(
+            await resultData(
               hd,
               jcd,
               rno
@@ -947,6 +1059,7 @@ export default {
     } catch (error) {
       return json({
         ok: false,
+
         error:
           error?.message ||
           String(error)
