@@ -4,52 +4,67 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0f172a">
-  <title>競艇AI V5.7</title>
+  <title>競艇AI V5.9</title>
 
   <style>
     *{box-sizing:border-box}
+
     body{
       margin:0;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       background:#0f172a;
       color:#f8fafc;
     }
+
     .wrap{
       max-width:760px;
       margin:auto;
       padding:18px 14px 40px;
     }
-    h1{margin:0 0 6px;font-size:28px}
+
+    h1{
+      margin:0 0 6px;
+      font-size:28px;
+    }
+
     .sub{
       color:#94a3b8;
       font-size:13px;
       margin-bottom:16px;
     }
+
     .card{
       background:#1e293b;
       border-radius:16px;
       padding:14px;
       margin-bottom:14px;
     }
+
     label{
       display:block;
       color:#cbd5e1;
       font-size:13px;
       margin:5px 0;
     }
-    input,select,button{
+
+    input,
+    select,
+    button{
       width:100%;
       min-height:46px;
       border:0;
       border-radius:10px;
       font-size:16px;
     }
-    input,select{
+
+    input,
+    select{
       background:white;
       color:#111827;
       padding:10px;
       margin-bottom:10px;
     }
+
     button{
       background:#2563eb;
       color:white;
@@ -57,41 +72,49 @@
       padding:10px;
       margin-bottom:8px;
     }
+
     .status{
       color:#cbd5e1;
       font-size:14px;
       margin:6px 0 10px;
       min-height:20px;
     }
+
     .title{
       font-size:19px;
       font-weight:900;
       margin-bottom:10px;
     }
+
     .race-grid{
       display:grid;
       grid-template-columns:repeat(3,1fr);
       gap:8px;
     }
+
     .race-btn{
       background:#334155;
       margin:0;
     }
+
     .race-btn.active{
       background:#2563eb;
     }
+
     .racer{
       background:#0f172a;
       border-radius:12px;
       padding:12px;
       margin-bottom:8px;
     }
+
     .topline{
       display:grid;
       grid-template-columns:45px 1fr auto;
       gap:10px;
       align-items:center;
     }
+
     .lane{
       width:40px;
       height:40px;
@@ -104,19 +127,24 @@
       font-weight:900;
       font-size:18px;
     }
+
     .name{
       font-size:16px;
       font-weight:900;
     }
+
     .meta{
       font-size:12px;
       color:#94a3b8;
       margin-top:3px;
     }
+
     .score{
       font-size:19px;
       font-weight:900;
+      text-align:right;
     }
+
     .stats{
       margin-top:9px;
       display:grid;
@@ -125,24 +153,28 @@
       font-size:12px;
       color:#cbd5e1;
     }
+
     .stat{
       background:#1e293b;
       border-radius:8px;
       padding:7px;
     }
+
     .prediction{
       background:#0f172a;
       border-radius:12px;
       padding:13px;
     }
+
     .confidence{
+      display:inline-block;
       font-size:20px;
       font-weight:900;
-      display:inline-block;
       padding:5px 12px;
       background:#334155;
       border-radius:999px;
     }
+
     .rank{
       display:flex;
       justify-content:space-between;
@@ -150,18 +182,24 @@
       padding:10px 0;
       border-bottom:1px solid #334155;
     }
-    .rank:last-child{border-bottom:0}
+
+    .rank:last-child{
+      border-bottom:0;
+    }
+
     .mark{
       font-size:22px;
       font-weight:900;
       margin-right:4px;
     }
+
     .bets{
       display:grid;
       grid-template-columns:repeat(3,1fr);
       gap:8px;
       margin-top:10px;
     }
+
     .bet{
       background:#1e293b;
       text-align:center;
@@ -170,12 +208,23 @@
       font-weight:900;
       font-size:17px;
     }
+
+    .live{
+      margin-top:10px;
+      padding:9px;
+      border-radius:10px;
+      background:#172554;
+      font-size:13px;
+      line-height:1.6;
+    }
+
     .notice{
       color:#94a3b8;
       font-size:12px;
       line-height:1.5;
       margin-top:12px;
     }
+
     .version{
       text-align:center;
       color:#64748b;
@@ -186,12 +235,13 @@
 </head>
 
 <body>
+
 <div class="wrap">
 
-  <h1>競艇AI V5.7</h1>
+  <h1>競艇AI V5.9</h1>
 
   <div class="sub">
-    全国勝率・当地勝率・平均ST・モーター成績反映
+    選手成績＋モーター＋直前展示データ反映
   </div>
 
   <div class="card">
@@ -206,8 +256,11 @@
     <div id="venueStatus" class="status"></div>
 
     <label>開催場</label>
+
     <select id="venue">
-      <option value="">開催場を選択</option>
+      <option value="">
+        開催場を選択
+      </option>
     </select>
 
     <button id="loadRaces">
@@ -219,8 +272,13 @@
   </div>
 
   <div class="card">
-    <div class="title">レース一覧</div>
+
+    <div class="title">
+      レース一覧
+    </div>
+
     <div id="raceGrid" class="race-grid"></div>
+
   </div>
 
   <div class="card">
@@ -252,7 +310,7 @@
   </div>
 
   <div class="version">
-    Boat Racing AI V5.7
+    Boat Racing AI V5.9
   </div>
 
 </div>
@@ -271,10 +329,12 @@ const predictionBox = $("prediction");
 const venueStatus = $("venueStatus");
 const raceStatus = $("raceStatus");
 const racerStatus = $("racerStatus");
+
 const predictionStatus =
   $("predictionStatus");
 
-const raceTitle = $("raceTitle");
+const raceTitle =
+  $("raceTitle");
 
 function todayLocal(){
 
@@ -297,6 +357,7 @@ function todayLocal(){
 }
 
 function apiDate(){
+
   return dateInput.value
     .replaceAll("-","");
 }
@@ -340,51 +401,123 @@ async function getJSON(url){
     return data;
 
   }finally{
+
     clearTimeout(timer);
   }
 }
 
 function safeNumber(value){
-  const n = Number(value);
+
+  const n =
+    Number(value);
+
   return Number.isFinite(n)
     ? n
     : null;
 }
 
+function fmt(value,digits=2){
+
+  if(
+    value === null ||
+    value === undefined
+  ){
+    return "-";
+  }
+
+  const n =
+    Number(value);
+
+  if(
+    !Number.isFinite(n)
+  ){
+    return "-";
+  }
+
+  return n.toFixed(digits);
+}
+
+function mergeBefore(
+  racers,
+  beforeData
+){
+
+  return racers.map(racer=>{
+
+    const live =
+      beforeData?.racers?.find(
+        x =>
+          Number(x.lane) ===
+          Number(racer.lane)
+      );
+
+    return {
+      ...racer,
+
+      before:{
+        course:
+          live?.course ??
+          null,
+
+        exhibitionTime:
+          live?.exhibitionTime ??
+          null,
+
+        exhibitionST:
+          live?.exhibitionST ??
+          null,
+
+        tilt:
+          live?.tilt ??
+          null
+      }
+    };
+  });
+}
+
 /*
- AIスコア
+  V5.9 AIスコア
 
- 艇番        最大30
- 級別        最大20
- 全国勝率    最大20
- 当地勝率    最大10
- 平均ST      最大10
- モーター    最大10
+  基本能力
+  艇番　　　　 25
+  級別　　　　 15
+  全国勝率　　 18
+  当地勝率　　 10
+  平均ST　　　  8
+  モーター　　 10
 
- 合計100点前後
+  直前
+  展示タイム　 8
+  展示ST　　　 4
+  進入　　　　 2
+
+  合計およそ100点
 */
 
-function aiScore(racer){
+function aiScore(
+  racer,
+  allRacers
+){
 
   let score = 0;
 
   const laneScore = {
-    1:30,
-    2:22,
-    3:18,
-    4:14,
-    5:9,
-    6:6
+    1:25,
+    2:19,
+    3:16,
+    4:13,
+    5:8,
+    6:5
   };
 
   score +=
     laneScore[racer.lane] || 0;
 
   const classScore = {
-    A1:20,
-    A2:15,
-    B1:9,
-    B2:4
+    A1:15,
+    A2:12,
+    B1:7,
+    B2:3
   };
 
   score +=
@@ -396,10 +529,11 @@ function aiScore(racer){
     );
 
   if(national !== null){
+
     score +=
       Math.min(
-        20,
-        national * 2.5
+        18,
+        national * 2.25
       );
   }
 
@@ -409,6 +543,7 @@ function aiScore(racer){
     );
 
   if(local !== null){
+
     score +=
       Math.min(
         10,
@@ -416,27 +551,27 @@ function aiScore(racer){
       );
   }
 
-  const st =
+  const avgST =
     safeNumber(
       racer.avgST
     );
 
-  if(st !== null){
+  if(avgST !== null){
 
-    if(st <= 0.12){
-      score += 10;
-    }
-    else if(st <= 0.14){
+    if(avgST <= 0.12){
       score += 8;
     }
-    else if(st <= 0.16){
-      score += 6;
+    else if(avgST <= 0.14){
+      score += 7;
     }
-    else if(st <= 0.18){
-      score += 4;
+    else if(avgST <= 0.16){
+      score += 5;
+    }
+    else if(avgST <= 0.18){
+      score += 3;
     }
     else{
-      score += 2;
+      score += 1;
     }
   }
 
@@ -446,11 +581,107 @@ function aiScore(racer){
     );
 
   if(motor !== null){
+
     score +=
       Math.min(
         10,
         motor / 5
       );
+  }
+
+  /*
+    展示タイムはレース内で
+    最速艇との比較で評価
+  */
+
+  const exhibitionTimes =
+    allRacers
+      .map(r =>
+        safeNumber(
+          r.before?.exhibitionTime
+        )
+      )
+      .filter(
+        n => n !== null
+      );
+
+  const exhibition =
+    safeNumber(
+      racer.before?.exhibitionTime
+    );
+
+  if(
+    exhibition !== null &&
+    exhibitionTimes.length
+  ){
+
+    const fastest =
+      Math.min(
+        ...exhibitionTimes
+      );
+
+    const diff =
+      exhibition - fastest;
+
+    if(diff <= 0.01){
+      score += 8;
+    }
+    else if(diff <= 0.03){
+      score += 7;
+    }
+    else if(diff <= 0.05){
+      score += 5;
+    }
+    else if(diff <= 0.08){
+      score += 3;
+    }
+    else{
+      score += 1;
+    }
+  }
+
+  /*
+    スタート展示
+  */
+
+  const exhibitionST =
+    safeNumber(
+      racer.before?.exhibitionST
+    );
+
+  if(exhibitionST !== null){
+
+    if(exhibitionST <= 0.05){
+      score += 4;
+    }
+    else if(exhibitionST <= 0.10){
+      score += 3;
+    }
+    else if(exhibitionST <= 0.15){
+      score += 2;
+    }
+    else{
+      score += 1;
+    }
+  }
+
+  /*
+    進入コース
+  */
+
+  const course =
+    safeNumber(
+      racer.before?.course
+    );
+
+  if(course !== null){
+
+    if(course === 1){
+      score += 2;
+    }
+    else if(course <= 3){
+      score += 1;
+    }
   }
 
   return Math.round(
@@ -476,7 +707,7 @@ function getConfidence(sorted){
     sorted[2].score;
 
   if(
-    top >= 78 &&
+    top >= 82 &&
     gap2 >= 8 &&
     gap3 >= 14
   ){
@@ -484,7 +715,7 @@ function getConfidence(sorted){
   }
 
   if(
-    top >= 65 &&
+    top >= 68 &&
     gap2 >= 4
   ){
     return "A";
@@ -534,35 +765,20 @@ function makeBets(sorted){
   ];
 }
 
-function fmt(value,digits=2){
-
-  if(
-    value === null ||
-    value === undefined
-  ){
-    return "-";
-  }
-
-  const n =
-    Number(value);
-
-  if(
-    !Number.isFinite(n)
-  ){
-    return "-";
-  }
-
-  return n.toFixed(digits);
-}
-
-function renderPrediction(racers){
+function renderPrediction(
+  racers,
+  weather
+){
 
   const scored =
     racers
       .map(racer=>({
         ...racer,
         score:
-          aiScore(racer)
+          aiScore(
+            racer,
+            racers
+          )
       }))
       .sort(
         (a,b)=>
@@ -580,6 +796,24 @@ function renderPrediction(racers){
 
   predictionStatus.textContent =
     `勝負度 ${confidence}`;
+
+  let weatherHtml = "";
+
+  if(weather){
+
+    weatherHtml = `
+      <div class="live">
+        気温：
+        ${fmt(weather.temperature,1)}℃　
+        風速：
+        ${fmt(weather.windSpeed,1)}m　
+        水温：
+        ${fmt(weather.waterTemperature,1)}℃　
+        波高：
+        ${fmt(weather.waveHeight,0)}cm
+      </div>
+    `;
+  }
 
   predictionBox.innerHTML = `
     <div class="prediction">
@@ -627,10 +861,15 @@ function renderPrediction(racers){
 
       </div>
 
+      ${weatherHtml}
+
       <div class="notice">
-        V5.7では艇番・級別・全国勝率・当地勝率・
-        平均ST・モーター2連率をスコア化しています。
-        展示タイム・直前気配・オッズはまだ未反映です。
+        V5.9では選手成績・枠番・級別・平均ST・
+        モーター成績に加え、展示タイム・
+        スタート展示・進入コースを反映しています。
+        直前情報が未公開の場合は、
+        通常データのみで評価します。
+        オッズ・期待値はまだ未反映です。
       </div>
 
     </div>
@@ -656,7 +895,7 @@ function renderRacers(
 
     const scoreData =
       scored.find(
-        r=>
+        r =>
           r.lane ===
           racer.lane
       );
@@ -729,17 +968,31 @@ function renderRacers(
         </div>
 
         <div class="stat">
-          全国2連率：
+          展示タイム：
           ${fmt(
-            racer.national?.secondRate
-          )}%
+            racer.before?.exhibitionTime
+          )}
         </div>
 
         <div class="stat">
-          全国3連率：
+          展示ST：
           ${fmt(
-            racer.national?.thirdRate
-          )}%
+            racer.before?.exhibitionST
+          )}
+        </div>
+
+        <div class="stat">
+          進入：
+          ${racer.before?.course ?? "-"}
+          コース
+        </div>
+
+        <div class="stat">
+          チルト：
+          ${fmt(
+            racer.before?.tilt,
+            1
+          )}
         </div>
 
       </div>
@@ -892,7 +1145,7 @@ async function loadRace(
       ".race-btn"
     )
     .forEach(
-      btn=>
+      btn =>
         btn.classList.remove(
           "active"
         )
@@ -916,14 +1169,14 @@ async function loadRace(
 
   try{
 
-    const data =
+    const raceData =
       await getJSON(
         `/api/race?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
       );
 
     if(
-      !data.racers ||
-      !data.racers.length
+      !raceData.racers ||
+      !raceData.racers.length
     ){
 
       racerStatus.textContent =
@@ -935,16 +1188,45 @@ async function loadRace(
       return;
     }
 
+    let beforeData = {
+      racers:[],
+      weather:null
+    };
+
+    try{
+
+      beforeData =
+        await getJSON(
+          `/api/before?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
+        );
+
+    }catch(error){
+
+      console.log(
+        "直前情報なし",
+        error
+      );
+    }
+
+    const merged =
+      mergeBefore(
+        raceData.racers,
+        beforeData
+      );
+
     racerStatus.textContent =
-      `${data.racers.length}艇を取得しました`;
+      beforeData.racers?.length
+        ? `${merged.length}艇＋直前情報を取得しました`
+        : `${merged.length}艇を取得しました（直前情報未公開）`;
 
     const prediction =
       renderPrediction(
-        data.racers
+        merged,
+        beforeData.weather
       );
 
     renderRacers(
-      data.racers,
+      merged,
       prediction.scored,
       prediction.marks
     );
@@ -975,5 +1257,6 @@ $("loadRaces")
   );
 
 </script>
+
 </body>
 </html>
