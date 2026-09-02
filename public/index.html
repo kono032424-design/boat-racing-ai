@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0f172a">
-  <title>競艇AI V5.6</title>
+  <title>競艇AI V5.7</title>
 
   <style>
     *{box-sizing:border-box}
@@ -19,8 +19,12 @@
       margin:auto;
       padding:18px 14px 40px;
     }
-    h1{margin:0 0 5px;font-size:28px}
-    .sub{color:#94a3b8;font-size:13px;margin-bottom:16px}
+    h1{margin:0 0 6px;font-size:28px}
+    .sub{
+      color:#94a3b8;
+      font-size:13px;
+      margin-bottom:16px;
+    }
     .card{
       background:#1e293b;
       border-radius:16px;
@@ -31,7 +35,7 @@
       display:block;
       color:#cbd5e1;
       font-size:13px;
-      margin:6px 0;
+      margin:5px 0;
     }
     input,select,button{
       width:100%;
@@ -41,7 +45,7 @@
       font-size:16px;
     }
     input,select{
-      background:#fff;
+      background:white;
       color:#111827;
       padding:10px;
       margin-bottom:10px;
@@ -49,15 +53,20 @@
     button{
       background:#2563eb;
       color:white;
-      padding:10px;
       font-weight:800;
+      padding:10px;
       margin-bottom:8px;
     }
     .status{
-      min-height:20px;
       color:#cbd5e1;
       font-size:14px;
-      margin:5px 0 10px;
+      margin:6px 0 10px;
+      min-height:20px;
+    }
+    .title{
+      font-size:19px;
+      font-weight:900;
+      margin-bottom:10px;
     }
     .race-grid{
       display:grid;
@@ -68,66 +77,84 @@
       background:#334155;
       margin:0;
     }
-    .race-btn.active{background:#2563eb}
-    .title{
-      font-size:19px;
-      font-weight:900;
-      margin-bottom:10px;
+    .race-btn.active{
+      background:#2563eb;
     }
     .racer{
       background:#0f172a;
-      padding:12px;
       border-radius:12px;
+      padding:12px;
       margin-bottom:8px;
+    }
+    .topline{
       display:grid;
-      grid-template-columns:44px 1fr auto;
+      grid-template-columns:45px 1fr auto;
       gap:10px;
       align-items:center;
     }
     .lane{
       width:40px;
       height:40px;
+      border-radius:50%;
       background:#e2e8f0;
       color:#111827;
-      border-radius:50%;
       display:flex;
       align-items:center;
       justify-content:center;
       font-weight:900;
       font-size:18px;
     }
-    .name{font-weight:900;font-size:16px}
-    .meta{font-size:12px;color:#94a3b8;margin-top:3px}
-    .score{
-      font-size:18px;
+    .name{
+      font-size:16px;
       font-weight:900;
-      text-align:right;
     }
-    .mark{
-      font-size:23px;
+    .meta{
+      font-size:12px;
+      color:#94a3b8;
+      margin-top:3px;
+    }
+    .score{
+      font-size:19px;
       font-weight:900;
+    }
+    .stats{
+      margin-top:9px;
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:6px;
+      font-size:12px;
+      color:#cbd5e1;
+    }
+    .stat{
+      background:#1e293b;
+      border-radius:8px;
+      padding:7px;
     }
     .prediction{
       background:#0f172a;
       border-radius:12px;
       padding:13px;
-      margin-top:8px;
+    }
+    .confidence{
+      font-size:20px;
+      font-weight:900;
+      display:inline-block;
+      padding:5px 12px;
+      background:#334155;
+      border-radius:999px;
     }
     .rank{
       display:flex;
       justify-content:space-between;
-      margin:8px 0;
-      padding-bottom:8px;
+      align-items:center;
+      padding:10px 0;
       border-bottom:1px solid #334155;
     }
     .rank:last-child{border-bottom:0}
-    .confidence{
-      display:inline-block;
-      padding:5px 10px;
-      border-radius:999px;
-      background:#334155;
+    .mark{
+      font-size:22px;
       font-weight:900;
-      font-size:18px;
+      margin-right:4px;
     }
     .bets{
       display:grid;
@@ -136,24 +163,24 @@
       margin-top:10px;
     }
     .bet{
-      text-align:center;
       background:#1e293b;
-      padding:10px 4px;
+      text-align:center;
+      padding:10px 5px;
       border-radius:9px;
       font-weight:900;
       font-size:17px;
     }
     .notice{
+      color:#94a3b8;
       font-size:12px;
       line-height:1.5;
-      color:#94a3b8;
       margin-top:12px;
     }
     .version{
       text-align:center;
-      font-size:12px;
       color:#64748b;
-      margin-top:25px;
+      font-size:12px;
+      margin-top:24px;
     }
   </style>
 </head>
@@ -161,9 +188,10 @@
 <body>
 <div class="wrap">
 
-  <h1>競艇AI V5.6</h1>
+  <h1>競艇AI V5.7</h1>
+
   <div class="sub">
-    選手データ＋暫定AIスコア予想
+    全国勝率・当地勝率・平均ST・モーター成績反映
   </div>
 
   <div class="card">
@@ -198,7 +226,7 @@
   <div class="card">
 
     <div id="raceTitle" class="title">
-      選手情報
+      選手データ
     </div>
 
     <div id="racerStatus" class="status">
@@ -224,14 +252,15 @@
   </div>
 
   <div class="version">
-    Boat Racing AI V5.6
+    Boat Racing AI V5.7
   </div>
 
 </div>
 
 <script>
 
-const $ = id => document.getElementById(id);
+const $ = id =>
+  document.getElementById(id);
 
 const dateInput = $("date");
 const venueSelect = $("venue");
@@ -242,53 +271,69 @@ const predictionBox = $("prediction");
 const venueStatus = $("venueStatus");
 const raceStatus = $("raceStatus");
 const racerStatus = $("racerStatus");
-const predictionStatus = $("predictionStatus");
+const predictionStatus =
+  $("predictionStatus");
+
 const raceTitle = $("raceTitle");
 
 function todayLocal(){
+
   const now = new Date();
 
-  const y = now.getFullYear();
+  const y =
+    now.getFullYear();
 
-  const m = String(
-    now.getMonth()+1
-  ).padStart(2,"0");
+  const m =
+    String(
+      now.getMonth() + 1
+    ).padStart(2,"0");
 
-  const d = String(
-    now.getDate()
-  ).padStart(2,"0");
+  const d =
+    String(
+      now.getDate()
+    ).padStart(2,"0");
 
   return `${y}-${m}-${d}`;
 }
 
 function apiDate(){
-  return dateInput.value.replaceAll("-","");
+  return dateInput.value
+    .replaceAll("-","");
 }
 
 async function getJSON(url){
 
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
-  const timer = setTimeout(
-    ()=>controller.abort(),
-    12000
-  );
+  const timer =
+    setTimeout(
+      ()=>controller.abort(),
+      12000
+    );
 
   try{
 
-    const response = await fetch(
-      url,
-      {
-        signal:controller.signal,
-        cache:"no-store"
-      }
-    );
+    const response =
+      await fetch(
+        url,
+        {
+          signal:
+            controller.signal,
+          cache:"no-store"
+        }
+      );
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
-    if(!response.ok || !data.ok){
+    if(
+      !response.ok ||
+      !data.ok
+    ){
       throw new Error(
-        data.error || `HTTP ${response.status}`
+        data.error ||
+        `HTTP ${response.status}`
       );
     }
 
@@ -299,50 +344,130 @@ async function getJSON(url){
   }
 }
 
+function safeNumber(value){
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? n
+    : null;
+}
+
 /*
-  暫定スコア
+ AIスコア
 
-  級別
-  A1 40
-  A2 30
-  B1 20
-  B2 10
+ 艇番        最大30
+ 級別        最大20
+ 全国勝率    最大20
+ 当地勝率    最大10
+ 平均ST      最大10
+ モーター    最大10
 
-  枠番
-  1号艇を高評価
+ 合計100点前後
 */
 
 function aiScore(racer){
 
-  const classScore = {
-    A1:40,
-    A2:30,
-    B1:20,
-    B2:10
-  };
+  let score = 0;
 
   const laneScore = {
-    1:45,
-    2:32,
-    3:26,
-    4:20,
-    5:14,
-    6:9
+    1:30,
+    2:22,
+    3:18,
+    4:14,
+    5:9,
+    6:6
   };
 
-  return (
-    (classScore[racer.class] || 0) +
-    (laneScore[racer.lane] || 0)
-  );
+  score +=
+    laneScore[racer.lane] || 0;
+
+  const classScore = {
+    A1:20,
+    A2:15,
+    B1:9,
+    B2:4
+  };
+
+  score +=
+    classScore[racer.class] || 0;
+
+  const national =
+    safeNumber(
+      racer.national?.winRate
+    );
+
+  if(national !== null){
+    score +=
+      Math.min(
+        20,
+        national * 2.5
+      );
+  }
+
+  const local =
+    safeNumber(
+      racer.local?.winRate
+    );
+
+  if(local !== null){
+    score +=
+      Math.min(
+        10,
+        local * 1.25
+      );
+  }
+
+  const st =
+    safeNumber(
+      racer.avgST
+    );
+
+  if(st !== null){
+
+    if(st <= 0.12){
+      score += 10;
+    }
+    else if(st <= 0.14){
+      score += 8;
+    }
+    else if(st <= 0.16){
+      score += 6;
+    }
+    else if(st <= 0.18){
+      score += 4;
+    }
+    else{
+      score += 2;
+    }
+  }
+
+  const motor =
+    safeNumber(
+      racer.motor?.secondRate
+    );
+
+  if(motor !== null){
+    score +=
+      Math.min(
+        10,
+        motor / 5
+      );
+  }
+
+  return Math.round(
+    score * 10
+  ) / 10;
 }
 
-function confidence(sorted){
+function getConfidence(sorted){
 
   if(sorted.length < 3){
     return "B";
   }
 
-  const gap1 =
+  const top =
+    sorted[0].score;
+
+  const gap2 =
     sorted[0].score -
     sorted[1].score;
 
@@ -351,16 +476,16 @@ function confidence(sorted){
     sorted[2].score;
 
   if(
-    sorted[0].score >= 75 &&
-    gap1 >= 10 &&
-    gap3 >= 15
+    top >= 78 &&
+    gap2 >= 8 &&
+    gap3 >= 14
   ){
     return "S";
   }
 
   if(
-    sorted[0].score >= 60 &&
-    gap1 >= 5
+    top >= 65 &&
+    gap2 >= 4
   ){
     return "A";
   }
@@ -368,23 +493,23 @@ function confidence(sorted){
   return "B";
 }
 
-function marks(sorted){
+function getMarks(sorted){
 
-  const markMap = {};
+  const result = {};
 
   if(sorted[0]){
-    markMap[sorted[0].lane] = "◎";
+    result[sorted[0].lane] = "◎";
   }
 
   if(sorted[1]){
-    markMap[sorted[1].lane] = "○";
+    result[sorted[1].lane] = "○";
   }
 
   if(sorted[2]){
-    markMap[sorted[2].lane] = "▲";
+    result[sorted[2].lane] = "▲";
   }
 
-  return markMap;
+  return result;
 }
 
 function makeBets(sorted){
@@ -393,9 +518,14 @@ function makeBets(sorted){
     return [];
   }
 
-  const a = sorted[0].lane;
-  const b = sorted[1].lane;
-  const c = sorted[2].lane;
+  const a =
+    sorted[0].lane;
+
+  const b =
+    sorted[1].lane;
+
+  const c =
+    sorted[2].lane;
 
   return [
     `${a}-${b}-${c}`,
@@ -404,21 +534,52 @@ function makeBets(sorted){
   ];
 }
 
+function fmt(value,digits=2){
+
+  if(
+    value === null ||
+    value === undefined
+  ){
+    return "-";
+  }
+
+  const n =
+    Number(value);
+
+  if(
+    !Number.isFinite(n)
+  ){
+    return "-";
+  }
+
+  return n.toFixed(digits);
+}
+
 function renderPrediction(racers){
 
-  const scored = racers
-    .map(racer=>({
-      ...racer,
-      score:aiScore(racer)
-    }))
-    .sort((a,b)=>b.score-a.score);
+  const scored =
+    racers
+      .map(racer=>({
+        ...racer,
+        score:
+          aiScore(racer)
+      }))
+      .sort(
+        (a,b)=>
+          b.score-a.score
+      );
 
-  const markMap = marks(scored);
-  const conf = confidence(scored);
-  const bets = makeBets(scored);
+  const marks =
+    getMarks(scored);
+
+  const confidence =
+    getConfidence(scored);
+
+  const bets =
+    makeBets(scored);
 
   predictionStatus.textContent =
-    `勝負度 ${conf}`;
+    `勝負度 ${confidence}`;
 
   predictionBox.innerHTML = `
     <div class="prediction">
@@ -426,40 +587,50 @@ function renderPrediction(racers){
       <div>
         勝負度：
         <span class="confidence">
-          ${conf}
+          ${confidence}
         </span>
       </div>
 
-      ${scored.slice(0,3).map(racer=>`
+      ${scored.slice(0,3).map(r=>`
         <div class="rank">
+
           <div>
             <span class="mark">
-              ${markMap[racer.lane] || ""}
+              ${marks[r.lane] || ""}
             </span>
-            ${racer.lane}号艇
-            ${racer.name}
+
+            ${r.lane}号艇
+            ${r.name}
           </div>
 
           <strong>
-            ${racer.score}点
+            ${r.score}点
           </strong>
+
         </div>
       `).join("")}
 
-      <div style="margin-top:12px;font-weight:900">
+      <div style="
+        margin-top:12px;
+        font-weight:900;
+      ">
         3連単候補
       </div>
 
       <div class="bets">
-        ${bets.map(bet=>`
-          <div class="bet">${bet}</div>
+
+        ${bets.map(b=>`
+          <div class="bet">
+            ${b}
+          </div>
         `).join("")}
+
       </div>
 
       <div class="notice">
-        現在のAIスコアは艇番と級別を使った暫定評価です。
-        モーター成績・全国勝率・当地勝率・展示タイム・
-        スタート展示・直前オッズはまだ反映していません。
+        V5.7では艇番・級別・全国勝率・当地勝率・
+        平均ST・モーター2連率をスコア化しています。
+        展示タイム・直前気配・オッズはまだ未反映です。
       </div>
 
     </div>
@@ -467,54 +638,116 @@ function renderPrediction(racers){
 
   return {
     scored,
-    markMap
+    marks
   };
 }
 
 function renderRacers(
   racers,
   scored,
-  markMap
+  marks
 ){
 
   racersBox.innerHTML = "";
 
-  for(const racer of racers){
+  for(
+    const racer of racers
+  ){
 
     const scoreData =
       scored.find(
-        x=>x.lane===racer.lane
+        r=>
+          r.lane ===
+          racer.lane
       );
 
     const row =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
 
-    row.className = "racer";
+    row.className =
+      "racer";
 
     row.innerHTML = `
-      <div class="lane">
-        ${racer.lane}
-      </div>
+      <div class="topline">
 
-      <div>
-        <div class="name">
-          ${markMap[racer.lane] || ""}
-          ${racer.name}
+        <div class="lane">
+          ${racer.lane}
         </div>
 
-        <div class="meta">
-          ${racer.class}
-          /
-          登録番号 ${racer.registration}
+        <div>
+
+          <div class="name">
+            ${marks[racer.lane] || ""}
+            ${racer.name}
+          </div>
+
+          <div class="meta">
+            ${racer.class}
+            /
+            登録番号
+            ${racer.registration}
+          </div>
+
         </div>
+
+        <div class="score">
+          ${scoreData?.score ?? "-"}点
+        </div>
+
       </div>
 
-      <div class="score">
-        ${scoreData?.score ?? "-"}点
+      <div class="stats">
+
+        <div class="stat">
+          全国勝率：
+          ${fmt(
+            racer.national?.winRate
+          )}
+        </div>
+
+        <div class="stat">
+          当地勝率：
+          ${fmt(
+            racer.local?.winRate
+          )}
+        </div>
+
+        <div class="stat">
+          平均ST：
+          ${fmt(
+            racer.avgST
+          )}
+        </div>
+
+        <div class="stat">
+          モーター2連率：
+          ${fmt(
+            racer.motor?.secondRate
+          )}%
+        </div>
+
+        <div class="stat">
+          全国2連率：
+          ${fmt(
+            racer.national?.secondRate
+          )}%
+        </div>
+
+        <div class="stat">
+          全国3連率：
+          ${fmt(
+            racer.national?.thirdRate
+          )}%
+        </div>
+
       </div>
     `;
 
-    racersBox.appendChild(row);
+    racersBox.appendChild(
+      row
+    );
   }
 }
 
@@ -525,7 +758,7 @@ function clearRaceArea(){
   predictionBox.innerHTML = "";
 
   raceTitle.textContent =
-    "選手情報";
+    "選手データ";
 
   racerStatus.textContent =
     "レースを選択してください";
@@ -546,21 +779,30 @@ async function loadVenues(){
 
   try{
 
-    const data = await getJSON(
-      `/api/venues?hd=${apiDate()}`
-    );
+    const data =
+      await getJSON(
+        `/api/venues?hd=${apiDate()}`
+      );
 
-    for(const venue of data.venues){
+    for(
+      const venue of
+      data.venues
+    ){
 
       const option =
-        document.createElement("option");
+        document.createElement(
+          "option"
+        );
 
-      option.value = venue.jcd;
+      option.value =
+        venue.jcd;
 
       option.textContent =
         `${venue.name}（${venue.jcd}）`;
 
-      venueSelect.appendChild(option);
+      venueSelect.appendChild(
+        option
+      );
     }
 
     venueStatus.textContent =
@@ -575,7 +817,8 @@ async function loadVenues(){
 
 async function loadRaces(){
 
-  const jcd = venueSelect.value;
+  const jcd =
+    venueSelect.value;
 
   if(!jcd){
 
@@ -592,17 +835,23 @@ async function loadRaces(){
 
   try{
 
-    const data = await getJSON(
-      `/api/venue?hd=${apiDate()}&jcd=${jcd}`
-    );
+    const data =
+      await getJSON(
+        `/api/venue?hd=${apiDate()}&jcd=${jcd}`
+      );
 
     raceStatus.textContent =
       `${data.venue || ""} ${data.races.length}レースを取得しました`;
 
-    for(const race of data.races){
+    for(
+      const race of
+      data.races
+    ){
 
       const button =
-        document.createElement("button");
+        document.createElement(
+          "button"
+        );
 
       button.className =
         "race-btn";
@@ -618,7 +867,9 @@ async function loadRaces(){
         )
       );
 
-      raceGrid.appendChild(button);
+      raceGrid.appendChild(
+        button
+      );
     }
 
   }catch(error){
@@ -637,15 +888,22 @@ async function loadRace(
     venueSelect.value;
 
   document
-    .querySelectorAll(".race-btn")
-    .forEach(btn=>
-      btn.classList.remove("active")
+    .querySelectorAll(
+      ".race-btn"
+    )
+    .forEach(
+      btn=>
+        btn.classList.remove(
+          "active"
+        )
     );
 
-  button.classList.add("active");
+  button.classList.add(
+    "active"
+  );
 
   raceTitle.textContent =
-    `${rno}R 選手情報`;
+    `${rno}R 選手データ`;
 
   racersBox.innerHTML = "";
   predictionBox.innerHTML = "";
@@ -658,11 +916,15 @@ async function loadRace(
 
   try{
 
-    const data = await getJSON(
-      `/api/race?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
-    );
+    const data =
+      await getJSON(
+        `/api/race?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
+      );
 
-    if(!data.racers.length){
+    if(
+      !data.racers ||
+      !data.racers.length
+    ){
 
       racerStatus.textContent =
         "選手データを取得できませんでした";
@@ -684,7 +946,7 @@ async function loadRace(
     renderRacers(
       data.racers,
       prediction.scored,
-      prediction.markMap
+      prediction.marks
     );
 
   }catch(error){
