@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0f172a">
-  <title>競艇AI V5.9</title>
+  <title>競艇AI V6.0</title>
 
   <style>
     *{box-sizing:border-box}
@@ -59,7 +59,7 @@
 
     input,
     select{
-      background:white;
+      background:#fff;
       color:#111827;
       padding:10px;
       margin-bottom:10px;
@@ -67,7 +67,7 @@
 
     button{
       background:#2563eb;
-      color:white;
+      color:#fff;
       font-weight:800;
       padding:10px;
       margin-bottom:8px;
@@ -110,7 +110,7 @@
 
     .topline{
       display:grid;
-      grid-template-columns:45px 1fr auto;
+      grid-template-columns:44px 1fr auto;
       gap:10px;
       align-items:center;
     }
@@ -140,7 +140,7 @@
     }
 
     .score{
-      font-size:19px;
+      font-size:18px;
       font-weight:900;
       text-align:right;
     }
@@ -183,30 +183,59 @@
       border-bottom:1px solid #334155;
     }
 
-    .rank:last-child{
-      border-bottom:0;
-    }
-
     .mark{
       font-size:22px;
       font-weight:900;
       margin-right:4px;
     }
 
-    .bets{
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:8px;
-      margin-top:10px;
+    .ev-card{
+      background:#1e293b;
+      border-radius:12px;
+      padding:12px;
+      margin-top:9px;
     }
 
-    .bet{
-      background:#1e293b;
-      text-align:center;
-      padding:10px 5px;
-      border-radius:9px;
+    .ev-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+
+    .combo{
+      font-size:20px;
       font-weight:900;
-      font-size:17px;
+    }
+
+    .decision{
+      font-size:13px;
+      font-weight:900;
+      border-radius:999px;
+      padding:5px 9px;
+      background:#334155;
+      white-space:nowrap;
+    }
+
+    .ev-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:6px;
+      margin-top:9px;
+    }
+
+    .ev-item{
+      background:#0f172a;
+      border-radius:8px;
+      padding:7px;
+      text-align:center;
+      font-size:12px;
+    }
+
+    .ev-item strong{
+      display:block;
+      font-size:15px;
+      margin-top:3px;
     }
 
     .live{
@@ -221,7 +250,7 @@
     .notice{
       color:#94a3b8;
       font-size:12px;
-      line-height:1.5;
+      line-height:1.55;
       margin-top:12px;
     }
 
@@ -238,10 +267,10 @@
 
 <div class="wrap">
 
-  <h1>競艇AI V5.9</h1>
+  <h1>競艇AI V6.0</h1>
 
   <div class="sub">
-    選手成績＋モーター＋直前展示データ反映
+    直前情報＋3連単オッズ＋参考EV
   </div>
 
   <div class="card">
@@ -258,9 +287,7 @@
     <label>開催場</label>
 
     <select id="venue">
-      <option value="">
-        開催場を選択
-      </option>
+      <option value="">開催場を選択</option>
     </select>
 
     <button id="loadRaces">
@@ -273,9 +300,7 @@
 
   <div class="card">
 
-    <div class="title">
-      レース一覧
-    </div>
+    <div class="title">レース一覧</div>
 
     <div id="raceGrid" class="race-grid"></div>
 
@@ -298,7 +323,7 @@
   <div class="card">
 
     <div class="title">
-      AI予想
+      AI予想・期待値
     </div>
 
     <div id="predictionStatus" class="status">
@@ -310,7 +335,7 @@
   </div>
 
   <div class="version">
-    Boat Racing AI V5.9
+    Boat Racing AI V6.0
   </div>
 
 </div>
@@ -329,29 +354,22 @@ const predictionBox = $("prediction");
 const venueStatus = $("venueStatus");
 const raceStatus = $("raceStatus");
 const racerStatus = $("racerStatus");
-
-const predictionStatus =
-  $("predictionStatus");
-
-const raceTitle =
-  $("raceTitle");
+const predictionStatus = $("predictionStatus");
+const raceTitle = $("raceTitle");
 
 function todayLocal(){
 
   const now = new Date();
 
-  const y =
-    now.getFullYear();
+  const y = now.getFullYear();
 
   const m =
-    String(
-      now.getMonth() + 1
-    ).padStart(2,"0");
+    String(now.getMonth()+1)
+      .padStart(2,"0");
 
   const d =
-    String(
-      now.getDate()
-    ).padStart(2,"0");
+    String(now.getDate())
+      .padStart(2,"0");
 
   return `${y}-${m}-${d}`;
 }
@@ -379,8 +397,7 @@ async function getJSON(url){
       await fetch(
         url,
         {
-          signal:
-            controller.signal,
+          signal:controller.signal,
           cache:"no-store"
         }
       );
@@ -408,8 +425,15 @@ async function getJSON(url){
 
 function safeNumber(value){
 
-  const n =
-    Number(value);
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return null;
+  }
+
+  const n = Number(value);
 
   return Number.isFinite(n)
     ? n
@@ -418,23 +442,11 @@ function safeNumber(value){
 
 function fmt(value,digits=2){
 
-  if(
-    value === null ||
-    value === undefined
-  ){
-    return "-";
-  }
+  const n = safeNumber(value);
 
-  const n =
-    Number(value);
-
-  if(
-    !Number.isFinite(n)
-  ){
-    return "-";
-  }
-
-  return n.toFixed(digits);
+  return n === null
+    ? "-"
+    : n.toFixed(digits);
 }
 
 function mergeBefore(
@@ -456,42 +468,23 @@ function mergeBefore(
 
       before:{
         course:
-          live?.course ??
-          null,
+          live?.course ?? null,
 
         exhibitionTime:
-          live?.exhibitionTime ??
-          null,
+          live?.exhibitionTime ?? null,
 
         exhibitionST:
-          live?.exhibitionST ??
-          null,
+          live?.exhibitionST ?? null,
 
         tilt:
-          live?.tilt ??
-          null
+          live?.tilt ?? null
       }
     };
   });
 }
 
 /*
-  V5.9 AIスコア
-
-  基本能力
-  艇番　　　　 25
-  級別　　　　 15
-  全国勝率　　 18
-  当地勝率　　 10
-  平均ST　　　  8
-  モーター　　 10
-
-  直前
-  展示タイム　 8
-  展示ST　　　 4
-  進入　　　　 2
-
-  合計およそ100点
+  V6.0 AIスコア
 */
 
 function aiScore(
@@ -529,7 +522,6 @@ function aiScore(
     );
 
   if(national !== null){
-
     score +=
       Math.min(
         18,
@@ -543,7 +535,6 @@ function aiScore(
     );
 
   if(local !== null){
-
     score +=
       Math.min(
         10,
@@ -552,9 +543,7 @@ function aiScore(
   }
 
   const avgST =
-    safeNumber(
-      racer.avgST
-    );
+    safeNumber(racer.avgST);
 
   if(avgST !== null){
 
@@ -581,7 +570,6 @@ function aiScore(
     );
 
   if(motor !== null){
-
     score +=
       Math.min(
         10,
@@ -589,17 +577,13 @@ function aiScore(
       );
   }
 
-  /*
-    展示タイムはレース内で
-    最速艇との比較で評価
-  */
-
-  const exhibitionTimes =
+  const times =
     allRacers
-      .map(r =>
-        safeNumber(
-          r.before?.exhibitionTime
-        )
+      .map(
+        r =>
+          safeNumber(
+            r.before?.exhibitionTime
+          )
       )
       .filter(
         n => n !== null
@@ -612,13 +596,11 @@ function aiScore(
 
   if(
     exhibition !== null &&
-    exhibitionTimes.length
+    times.length
   ){
 
     const fastest =
-      Math.min(
-        ...exhibitionTimes
-      );
+      Math.min(...times);
 
     const diff =
       exhibition - fastest;
@@ -639,10 +621,6 @@ function aiScore(
       score += 1;
     }
   }
-
-  /*
-    スタート展示
-  */
 
   const exhibitionST =
     safeNumber(
@@ -665,10 +643,6 @@ function aiScore(
     }
   }
 
-  /*
-    進入コース
-  */
-
   const course =
     safeNumber(
       racer.before?.course
@@ -687,6 +661,121 @@ function aiScore(
   return Math.round(
     score * 10
   ) / 10;
+}
+
+/*
+  スコアを勝ちやすさの重みに変換。
+
+  これは学習済み確率ではなく、
+  EV表示用の暫定モデル。
+*/
+
+function strength(score){
+
+  return Math.exp(
+    score / 18
+  );
+}
+
+/*
+  3連単の推定確率
+
+  1着を選ぶ
+  ↓
+  残りから2着
+  ↓
+  残りから3着
+
+  の順で計算。
+*/
+
+function trifectaProbability(
+  first,
+  second,
+  third,
+  scored
+){
+
+  const racers =
+    scored.map(r=>({
+      lane:r.lane,
+      strength:
+        strength(r.score)
+    }));
+
+  const total1 =
+    racers.reduce(
+      (sum,r)=>
+        sum+r.strength,
+      0
+    );
+
+  const r1 =
+    racers.find(
+      r=>r.lane===first
+    );
+
+  const r2 =
+    racers.find(
+      r=>r.lane===second
+    );
+
+  const r3 =
+    racers.find(
+      r=>r.lane===third
+    );
+
+  if(
+    !r1 ||
+    !r2 ||
+    !r3 ||
+    first===second ||
+    first===third ||
+    second===third
+  ){
+    return 0;
+  }
+
+  const p1 =
+    r1.strength /
+    total1;
+
+  const total2 =
+    total1 -
+    r1.strength;
+
+  const p2 =
+    r2.strength /
+    total2;
+
+  const total3 =
+    total2 -
+    r2.strength;
+
+  const p3 =
+    r3.strength /
+    total3;
+
+  return p1*p2*p3;
+}
+
+function getMarks(sorted){
+
+  const result = {};
+
+  if(sorted[0]){
+    result[sorted[0].lane]="◎";
+  }
+
+  if(sorted[1]){
+    result[sorted[1].lane]="○";
+  }
+
+  if(sorted[2]){
+    result[sorted[2].lane]="▲";
+  }
+
+  return result;
 }
 
 function getConfidence(sorted){
@@ -724,50 +813,147 @@ function getConfidence(sorted){
   return "B";
 }
 
-function getMarks(sorted){
+/*
+  AI上位4艇から
+  3連単を全部作る。
+*/
 
-  const result = {};
+function makeCandidates(scored){
 
-  if(sorted[0]){
-    result[sorted[0].lane] = "◎";
+  const top =
+    scored
+      .slice(0,4)
+      .map(r=>r.lane);
+
+  const list = [];
+
+  for(const a of top){
+
+    for(const b of top){
+
+      if(a===b){
+        continue;
+      }
+
+      for(const c of top){
+
+        if(
+          c===a ||
+          c===b
+        ){
+          continue;
+        }
+
+        list.push(
+          `${a}-${b}-${c}`
+        );
+      }
+    }
   }
 
-  if(sorted[1]){
-    result[sorted[1].lane] = "○";
-  }
-
-  if(sorted[2]){
-    result[sorted[2].lane] = "▲";
-  }
-
-  return result;
+  return list;
 }
 
-function makeBets(sorted){
+function oddsMap(oddsData){
 
-  if(sorted.length < 3){
-    return [];
+  const map = {};
+
+  for(
+    const item of
+    oddsData?.odds || []
+  ){
+
+    map[item.combination] =
+      Number(item.odds);
   }
 
-  const a =
-    sorted[0].lane;
+  return map;
+}
 
-  const b =
-    sorted[1].lane;
+function evaluateBets(
+  scored,
+  oddsData
+){
 
-  const c =
-    sorted[2].lane;
+  const map =
+    oddsMap(oddsData);
 
-  return [
-    `${a}-${b}-${c}`,
-    `${a}-${c}-${b}`,
-    `${b}-${a}-${c}`
-  ];
+  const candidates =
+    makeCandidates(scored);
+
+  const results = [];
+
+  for(
+    const combo of candidates
+  ){
+
+    const parts =
+      combo
+        .split("-")
+        .map(Number);
+
+    const probability =
+      trifectaProbability(
+        parts[0],
+        parts[1],
+        parts[2],
+        scored
+      );
+
+    const odds =
+      safeNumber(
+        map[combo]
+      );
+
+    if(
+      odds === null
+    ){
+      continue;
+    }
+
+    /*
+      EV=推定的中確率×オッズ
+
+      1.00が理論上の損益分岐。
+    */
+
+    const ev =
+      probability *
+      odds;
+
+    let decision =
+      "見送り";
+
+    if(ev >= 1.20){
+      decision =
+        "買い候補";
+    }
+    else if(ev >= 1.05){
+      decision =
+        "様子見";
+    }
+
+    results.push({
+      combo,
+      probability,
+      odds,
+      ev,
+      decision
+    });
+  }
+
+  return results
+    .sort(
+      (a,b)=>
+        b.ev-a.ev
+    )
+    .slice(0,6);
 }
 
 function renderPrediction(
   racers,
-  weather
+  weather,
+  oddsData
 ){
 
   const scored =
@@ -792,10 +978,78 @@ function renderPrediction(
     getConfidence(scored);
 
   const bets =
-    makeBets(scored);
+    evaluateBets(
+      scored,
+      oddsData
+    );
 
   predictionStatus.textContent =
-    `勝負度 ${confidence}`;
+    `勝負度 ${confidence} / オッズ ${oddsData?.count || 0}通り取得`;
+
+  let betsHtml = "";
+
+  if(bets.length){
+
+    betsHtml =
+      bets.map(bet=>{
+
+        const probabilityPercent =
+          bet.probability *
+          100;
+
+        return `
+          <div class="ev-card">
+
+            <div class="ev-top">
+
+              <div class="combo">
+                ${bet.combo}
+              </div>
+
+              <div class="decision">
+                ${bet.decision}
+              </div>
+
+            </div>
+
+            <div class="ev-grid">
+
+              <div class="ev-item">
+                推定確率
+                <strong>
+                  ${probabilityPercent.toFixed(1)}%
+                </strong>
+              </div>
+
+              <div class="ev-item">
+                オッズ
+                <strong>
+                  ${bet.odds.toFixed(1)}
+                </strong>
+              </div>
+
+              <div class="ev-item">
+                参考EV
+                <strong>
+                  ${bet.ev.toFixed(2)}
+                </strong>
+              </div>
+
+            </div>
+
+          </div>
+        `;
+      }).join("");
+
+  }else{
+
+    betsHtml = `
+      <div class="notice">
+        オッズが取得できないため、
+        EV評価はまだできません。
+      </div>
+    `;
+  }
 
   let weatherHtml = "";
 
@@ -845,31 +1099,23 @@ function renderPrediction(
       `).join("")}
 
       <div style="
-        margin-top:12px;
+        margin-top:14px;
         font-weight:900;
       ">
-        3連単候補
+        EVランキング
       </div>
 
-      <div class="bets">
-
-        ${bets.map(b=>`
-          <div class="bet">
-            ${b}
-          </div>
-        `).join("")}
-
-      </div>
+      ${betsHtml}
 
       ${weatherHtml}
 
       <div class="notice">
-        V5.9では選手成績・枠番・級別・平均ST・
-        モーター成績に加え、展示タイム・
-        スタート展示・進入コースを反映しています。
-        直前情報が未公開の場合は、
-        通常データのみで評価します。
-        オッズ・期待値はまだ未反映です。
+        EVは「AIスコアから作った暫定推定確率 × 現在オッズ」です。
+        EV 1.00が計算上の損益分岐ですが、
+        現在の推定確率は過去レースで校正された
+        実測的中率ではありません。
+        V6.1以降で予想保存・結果照合・回収率を蓄積し、
+        この確率モデルを検証・調整します。
       </div>
 
     </div>
@@ -901,9 +1147,7 @@ function renderRacers(
       );
 
     const row =
-      document.createElement(
-        "div"
-      );
+      document.createElement("div");
 
     row.className =
       "racer";
@@ -1102,9 +1346,7 @@ async function loadRaces(){
     ){
 
       const button =
-        document.createElement(
-          "button"
-        );
+        document.createElement("button");
 
       button.className =
         "race-btn";
@@ -1141,11 +1383,9 @@ async function loadRace(
     venueSelect.value;
 
   document
-    .querySelectorAll(
-      ".race-btn"
-    )
+    .querySelectorAll(".race-btn")
     .forEach(
-      btn =>
+      btn=>
         btn.classList.remove(
           "active"
         )
@@ -1165,7 +1405,7 @@ async function loadRace(
     "選手データを取得中...";
 
   predictionStatus.textContent =
-    "AI予想を計算中...";
+    "AI予想・オッズを計算中...";
 
   try{
 
@@ -1193,6 +1433,11 @@ async function loadRace(
       weather:null
     };
 
+    let oddsData = {
+      odds:[],
+      count:0
+    };
+
     try{
 
       beforeData =
@@ -1208,6 +1453,21 @@ async function loadRace(
       );
     }
 
+    try{
+
+      oddsData =
+        await getJSON(
+          `/api/odds?hd=${apiDate()}&jcd=${jcd}&rno=${rno}`
+        );
+
+    }catch(error){
+
+      console.log(
+        "オッズ取得失敗",
+        error
+      );
+    }
+
     const merged =
       mergeBefore(
         raceData.racers,
@@ -1217,12 +1477,13 @@ async function loadRace(
     racerStatus.textContent =
       beforeData.racers?.length
         ? `${merged.length}艇＋直前情報を取得しました`
-        : `${merged.length}艇を取得しました（直前情報未公開）`;
+        : `${merged.length}艇を取得しました`;
 
     const prediction =
       renderPrediction(
         merged,
-        beforeData.weather
+        beforeData.weather,
+        oddsData
       );
 
     renderRacers(
