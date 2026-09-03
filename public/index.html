@@ -3382,5 +3382,506 @@ renderComparisons=function(){
 renderHistory();
 
 </script>
+<style>
+.note-box{
+  background:#1e293b;
+  border:1px solid #0ea5e9;
+  border-radius:16px;
+  padding:14px;
+  margin-bottom:14px;
+}
+
+.note-output{
+  width:100%;
+  min-height:430px;
+  background:#0f172a;
+  color:#f8fafc;
+  border:1px solid #475569;
+  border-radius:10px;
+  padding:12px;
+  font-size:14px;
+  line-height:1.7;
+  resize:vertical;
+}
+
+.note-create{
+  background:#0284c7;
+}
+
+.note-copy{
+  background:#16a34a;
+}
+</style>
+
+<script>
+/* ===== note販売文作成・資金配分なし ===== */
+
+(function(){
+
+  const wrap =
+    document.querySelector(".wrap");
+
+  if(!wrap)return;
+
+  const version =
+    document.querySelector(".version");
+
+  const card =
+    document.createElement("div");
+
+  card.className =
+    "note-box";
+
+  card.innerHTML = `
+    <div class="title">
+      📝 note販売文作成
+    </div>
+
+    <div class="notice" style="margin-bottom:10px">
+      現在表示している予想から、
+      S評価・本線・穴狙い・AI信頼度を
+      自動でnote用文章に整形します。
+    </div>
+
+    <button
+      id="createNoteText"
+      class="note-create"
+    >
+      📝 note用文章を作成
+    </button>
+
+    <button
+      id="copyNoteText"
+      class="note-copy"
+    >
+      📋 note用文章をコピー
+    </button>
+
+    <div
+      id="noteStatus"
+      class="status"
+    ></div>
+
+    <textarea
+      id="noteOutput"
+      class="note-output"
+      placeholder="ここにnote用文章が作成されます"
+    ></textarea>
+  `;
+
+  if(version){
+
+    wrap.insertBefore(
+      card,
+      version
+    );
+
+  }else{
+
+    wrap.appendChild(card);
+  }
+
+
+  function noteDateText(date){
+
+    const s =
+      String(date || "");
+
+    if(s.length !== 8){
+      return s;
+    }
+
+    return (
+      `${Number(s.slice(4,6))}月` +
+      `${Number(s.slice(6,8))}日`
+    );
+  }
+
+
+  function confidenceStars(snapshot){
+
+    const confidence =
+      snapshot.confidence || "-";
+
+    const decision =
+      snapshot.sDecision;
+
+    if(
+      confidence === "S" &&
+      decision?.status === "BET"
+    ){
+
+      const score =
+        Number(
+          decision.score || 0
+        );
+
+      if(score >= 80){
+        return "★★★★★";
+      }
+
+      if(score >= 70){
+        return "★★★★☆";
+      }
+
+      return "★★★☆☆";
+    }
+
+    if(confidence === "S"){
+      return "★★★☆☆";
+    }
+
+    if(confidence === "A"){
+      return "★★★☆☆";
+    }
+
+    return "★★☆☆☆";
+  }
+
+
+  function createNoteArticle(){
+
+    if(!currentSnapshot){
+
+      document.getElementById(
+        "noteStatus"
+      ).textContent =
+        "先に予想するレースを表示してください";
+
+      return;
+    }
+
+    const s =
+      currentSnapshot;
+
+    const venue =
+      s.venue ||
+      s.jcd ||
+      "";
+
+    const date =
+      noteDateText(
+        s.date
+      );
+
+    const confidence =
+      s.confidence ||
+      "-";
+
+    const decision =
+      s.sDecision?.label ||
+      `${confidence}評価`;
+
+    const score =
+      Number(
+        s.sDecision?.score || 0
+      );
+
+    const stars =
+      confidenceStars(s);
+
+    const strategy =
+      s.strategy?.label ||
+      "AI本線";
+
+    const reason =
+      s.strategy?.reason ||
+      "";
+
+    const main =
+      Array.isArray(s.bets)
+        ? s.bets.slice(0,6)
+        : [];
+
+    const holes =
+      Array.isArray(s.holeBets)
+        ? s.holeBets
+        : [];
+
+    const lines = [];
+
+
+    lines.push(
+      `【${date} ${venue} ${s.rno}R】AI予想`
+    );
+
+    lines.push("");
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      "■ AIレース評価"
+    );
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      `勝負度：${confidence}`
+    );
+
+    lines.push(
+      `判定：${decision}`
+    );
+
+    if(score > 0){
+
+      lines.push(
+        `S安定スコア：${score.toFixed(1)} / 100`
+      );
+    }
+
+    lines.push(
+      `AI信頼度：${stars}`
+    );
+
+    lines.push(
+      `本線タイプ：${strategy}`
+    );
+
+    if(reason){
+
+      lines.push(
+        `分析ポイント：${reason}`
+      );
+    }
+
+
+    lines.push("");
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      "■ 本線 3連単"
+    );
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+
+    if(main.length){
+
+      main.forEach(
+        (bet,index)=>{
+
+          const probability =
+            Number(
+              bet.probability || 0
+            ) * 100;
+
+          const odds =
+            Number(
+              bet.odds || 0
+            );
+
+          let text =
+            `${index+1}. ${bet.combination}`;
+
+          text +=
+            `　AI推定 ${probability.toFixed(2)}%`;
+
+          if(odds){
+
+            text +=
+              `　${odds.toFixed(1)}倍`;
+          }
+
+          lines.push(text);
+        }
+      );
+
+    }else{
+
+      lines.push(
+        "本線候補なし"
+      );
+    }
+
+
+    lines.push("");
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      "■ 🎯 穴狙い"
+    );
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+
+    if(holes.length){
+
+      holes.forEach(
+        (bet,index)=>{
+
+          const odds =
+            Number(
+              bet.odds || 0
+            );
+
+          const probability =
+            Number(
+              bet.probability || 0
+            ) * 100;
+
+          lines.push(
+            `${index+1}. ${bet.combination}` +
+            `　${bet.tier?.label || "穴候補"}` +
+            `　AI${bet.aiRank || "-"}位` +
+            `　推定${probability.toFixed(2)}%` +
+            (
+              odds
+                ? `　${odds.toFixed(1)}倍`
+                : ""
+            )
+          );
+        }
+      );
+
+    }else{
+
+      lines.push(
+        "今回は穴候補なし"
+      );
+    }
+
+
+    if(
+      s.sDecision?.status === "PASS"
+    ){
+
+      lines.push("");
+
+      lines.push(
+        "⚠️ S評価ですが、AI判定は見送りです。安定条件を満たしていないため、強く推奨するレースではありません。"
+      );
+    }
+
+
+    lines.push("");
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      "■ AI分析について"
+    );
+
+    lines.push(
+      "━━━━━━━━━━━━━━━━━━"
+    );
+
+    lines.push(
+      "選手成績・ST・モーター・展示・コース・過去学習データなどをもとに、1着・2着・3着をそれぞれAI評価しています。"
+    );
+
+    lines.push("");
+
+    lines.push(
+      "本線は的中率を重視し、穴狙いはAI評価・推定確率・期待値を組み合わせて別枠で抽出しています。"
+    );
+
+    lines.push("");
+
+    lines.push(
+      "※AIによる予想・分析情報です。的中や利益を保証するものではありません。舟券の購入はご自身の判断でお願いします。"
+    );
+
+
+    document.getElementById(
+      "noteOutput"
+    ).value =
+      lines.join("\n");
+
+    document.getElementById(
+      "noteStatus"
+    ).textContent =
+      "📝 note用文章を作成しました";
+  }
+
+
+  async function copyNoteArticle(){
+
+    const textarea =
+      document.getElementById(
+        "noteOutput"
+      );
+
+    const text =
+      textarea.value;
+
+    if(!text){
+
+      document.getElementById(
+        "noteStatus"
+      ).textContent =
+        "先にnote用文章を作成してください";
+
+      return;
+    }
+
+    try{
+
+      await navigator
+        .clipboard
+        .writeText(text);
+
+      document.getElementById(
+        "noteStatus"
+      ).textContent =
+        "📋 note用文章をコピーしました";
+
+    }catch{
+
+      textarea.focus();
+      textarea.select();
+
+      try{
+
+        document.execCommand(
+          "copy"
+        );
+
+        document.getElementById(
+          "noteStatus"
+        ).textContent =
+          "📋 note用文章をコピーしました";
+
+      }catch{
+
+        document.getElementById(
+          "noteStatus"
+        ).textContent =
+          "文章を長押ししてコピーしてください";
+      }
+    }
+  }
+
+
+  document.getElementById(
+    "createNoteText"
+  ).onclick =
+    createNoteArticle;
+
+
+  document.getElementById(
+    "copyNoteText"
+  ).onclick =
+    copyNoteArticle;
+
+})();
+</script>
+
 </body>
 </html>
