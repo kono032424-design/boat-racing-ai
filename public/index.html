@@ -2556,5 +2556,831 @@ setTimeout(
 );
 
 </script>
+<script>
+/* ===== V6.6.12 過去レース学習取り込み ===== */
+
+const V6612_VERSION="6.6.12";
+
+/* 画面表示だけV6.6.12へ更新 */
+document.title="競艇AI V6.6.12";
+
+const v6612H1=document.querySelector("h1");
+if(v6612H1){
+  v6612H1.textContent="競艇AI V6.6.12";
+}
+
+const v6612Sub=document.querySelector(".sub");
+if(v6612Sub){
+  v6612Sub.textContent=
+    "過去レース学習取り込み / 全レース学習保存 / 3着候補強化 / 的中率優先本線 / 穴狙い維持 / 高速処理";
+}
+
+const v6612Version=document.querySelector(".version");
+if(v6612Version){
+  v6612Version.textContent=
+    "Boat Racing AI V6.6.12";
+}
+
+/* 今後作る通常予想はV6.6.12として保存 */
+const buildPredictionV6611=
+  buildPrediction;
+
+buildPrediction=function(
+  racers,
+  oddsData,
+  context
+){
+
+  const p=
+    buildPredictionV6611(
+      racers,
+      oddsData,
+      context
+    );
+
+  if(p?.snapshot){
+    p.snapshot.version=
+      V6612_VERSION;
+  }
+
+  return p;
+};
+
+alreadySaved=function(
+  date,
+  jcd,
+  rno
+){
+
+  return getHistory().some(
+    item=>
+      sameRace(
+        item,
+        date,
+        jcd,
+        rno
+      )
+      &&
+      String(
+        item.version||""
+      )===
+      V6612_VERSION
+      &&
+      !item.learningOnly
+  );
+};
+
+alreadySavedForLearning=function(
+  date,
+  jcd,
+  rno
+){
+
+  return getHistory().some(
+    item=>
+      sameRace(
+        item,
+        date,
+        jcd,
+        rno
+      )
+      &&
+      String(
+        item.version||""
+      )===
+      V6612_VERSION
+  );
+};
+
+/* 過去学習用カード追加 */
+
+const v6612TodayLearningButton=
+  $("saveAllLearning");
+
+if(
+  v6612TodayLearningButton
+){
+
+  const v6612PastCard=
+    document.createElement(
+      "div"
+    );
+
+  v6612PastCard.className=
+    "card";
+
+  v6612PastCard.innerHTML=`
+    <div class="title">
+      📚 過去レース学習取り込み
+    </div>
+
+    <div class="speed">
+
+      上の日付で過去日を選び、
+      開催場 → レース一覧を取得してから押してください。
+
+      <br>
+
+      オッズは不要。
+      選手データ・取得できる展示情報・実結果を
+      学習専用で保存します。
+
+    </div>
+
+    <button
+      id="importPastLearning"
+      class="learn-save"
+    >
+      📚 過去12Rを学習データに追加
+    </button>
+
+    <div
+      id="pastLearningStatus"
+      class="status"
+    ></div>
+
+    <div class="notice">
+
+      過去データは的中率・回収率・収支には入りません。
+      すでに同じレースの有効な保存データがある場合は
+      重複取り込みしません。
+
+    </div>
+  `;
+
+  v6612TodayLearningButton
+    .closest(".card")
+    ?.insertAdjacentElement(
+      "afterend",
+      v6612PastCard
+    );
+}
+
+function hasUsableLearningRace(
+  date,
+  jcd,
+  rno
+){
+
+  return getHistory().some(
+    item=>
+
+      sameRace(
+        item,
+        date,
+        jcd,
+        rno
+      )
+
+      &&
+
+      Array.isArray(
+        item.racersDetailed
+      )
+
+      &&
+
+      item.racersDetailed
+        .length===6
+  );
+}
+
+function buildHistoricalLearningItem(
+  racers,
+  beforeData,
+  resultData,
+  context
+){
+
+  const merged=
+    mergeBefore(
+      racers,
+      beforeData||{
+        racers:[]
+      }
+    );
+
+  const learned=
+    calculateRoleLearnedWeights(
+      context.date
+    );
+
+  const modelRacers=
+    merged.map(
+      racer=>{
+
+        const components=
+          scoreComponents(
+            racer,
+            merged
+          );
+
+        return {
+          ...racer,
+
+          components,
+
+          overallScore:
+            overallScore(
+              components,
+              learned.overall
+            ),
+
+          firstScore:
+            roleScore(
+              components,
+              learned.roles.first,
+              "first"
+            ),
+
+          secondScore:
+            roleScore(
+              components,
+              learned.roles.second,
+              "second"
+            ),
+
+          thirdScore:
+            roleScore(
+              components,
+              learned.roles.third,
+              "third"
+            )
+        };
+      }
+    );
+
+  const combination=
+    String(
+      resultData.combination||
+      ""
+    );
+
+  const winningLanes=
+    Array.isArray(
+      resultData.winningLanes
+    )
+    &&
+    resultData.winningLanes
+      .length>=3
+
+      ? resultData.winningLanes
+          .slice(0,3)
+          .map(Number)
+
+      : combination
+          .split("-")
+          .map(Number)
+          .slice(0,3);
+
+  if(
+    winningLanes.length<3
+    ||
+    winningLanes.some(
+      x=>
+        !Number.isFinite(x)
+    )
+  ){
+
+    return null;
+  }
+
+  return {
+
+    id:
+      `hist-${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+
+    version:
+      V6612_VERSION,
+
+    createdAt:
+      new Date()
+        .toISOString(),
+
+    date:
+      context.date,
+
+    jcd:
+      context.jcd,
+
+    venue:
+      context.venue,
+
+    rno:
+      Number(
+        context.rno
+      ),
+
+    confidence:
+      "HIST",
+
+    sDecision:{
+      status:"NONE",
+      label:"過去学習",
+      score:0,
+      metrics:null,
+      reasons:[]
+    },
+
+    strategy:{
+      type:"HIST",
+      label:"過去学習専用",
+      reason:"実績集計対象外"
+    },
+
+    learningOnly:true,
+
+    historicalImport:true,
+
+    saveMode:
+      "historical-learning-import",
+
+    betUnit:0,
+
+    holeBetUnit:0,
+
+    evaluatedCount:0,
+
+    learningRaces:
+      learned.races,
+
+    roleLearnedWeights:
+      learned.roles,
+
+    racersDetailed:
+      modelRacers.map(
+        r=>({
+
+          lane:r.lane,
+
+          name:r.name,
+
+          class:r.class,
+
+          components:{
+            ...r.components
+          },
+
+          overallScore:
+            r.overallScore,
+
+          firstScore:
+            r.firstScore,
+
+          secondScore:
+            r.secondScore,
+
+          thirdScore:
+            r.thirdScore
+        })
+      ),
+
+    bets:[],
+
+    holeBets:[],
+
+    allBetRanking:[],
+
+    result:{
+
+      finished:true,
+
+      checkedAt:
+        new Date()
+          .toISOString(),
+
+      combination,
+
+      winningLanes,
+
+      payoutPer100:
+        Number(
+          resultData.payout||
+          0
+        ),
+
+      method:
+        resultData.method||
+        "",
+
+      historicalImport:true,
+
+      diagnostics:{
+
+        overall:[
+
+          rankOfLane(
+            modelRacers,
+            winningLanes[0],
+            "overallScore"
+          ),
+
+          rankOfLane(
+            modelRacers,
+            winningLanes[1],
+            "overallScore"
+          ),
+
+          rankOfLane(
+            modelRacers,
+            winningLanes[2],
+            "overallScore"
+          )
+        ],
+
+        role:{
+
+          first:
+            rankOfLane(
+              modelRacers,
+              winningLanes[0],
+              "firstScore"
+            ),
+
+          second:
+            rankOfLane(
+              modelRacers,
+              winningLanes[1],
+              "secondScore"
+            ),
+
+          third:
+            rankOfLane(
+              modelRacers,
+              winningLanes[2],
+              "thirdScore"
+            )
+        }
+      }
+    }
+  };
+}
+
+async function importPastLearningRaces(){
+
+  const status=
+    $("pastLearningStatus");
+
+  const button=
+    $("importPastLearning");
+
+  const date=
+    apiDate();
+
+  const jcd=
+    venueSelect.value;
+
+  if(!date){
+
+    status.textContent=
+      "過去の日付を選択してください";
+
+    return;
+  }
+
+  if(
+    date>=todayApi()
+  ){
+
+    status.textContent=
+      "今日より前の日付を選択してください";
+
+    return;
+  }
+
+  if(!jcd){
+
+    status.textContent=
+      "開催場を選択してください";
+
+    return;
+  }
+
+  if(
+    !currentVenueRaces.length
+  ){
+
+    status.textContent=
+      "先にレース一覧を取得してください";
+
+    return;
+  }
+
+  const venueName=
+    venueSelect.options[
+      venueSelect.selectedIndex
+    ]
+    ?.textContent
+    ?.split("（")[0]
+    ||
+    jcd;
+
+  button.disabled=
+    true;
+
+  let saved=0;
+
+  let duplicate=0;
+
+  let unavailable=0;
+
+  let noResult=0;
+
+  const rows=
+    await runPool(
+
+      currentVenueRaces,
+
+      SCAN_CONCURRENCY,
+
+      async race=>{
+
+        const rno=
+          Number(
+            race.rno
+          );
+
+        if(
+          hasUsableLearningRace(
+            date,
+            jcd,
+            rno
+          )
+        ){
+
+          return {
+            duplicate:true,
+            rno
+          };
+        }
+
+        const [
+          raceRes,
+          beforeRes,
+          resultRes
+        ]=
+          await Promise.allSettled([
+
+            getJSON(
+              `/api/race?hd=${date}&jcd=${jcd}&rno=${rno}`
+            ),
+
+            getJSON(
+              `/api/before?hd=${date}&jcd=${jcd}&rno=${rno}`
+            ),
+
+            getCachedResult(
+              date,
+              jcd,
+              rno,
+              true
+            )
+
+          ]);
+
+        if(
+          raceRes.status!==
+          "fulfilled"
+
+          ||
+
+          !raceRes.value.racers
+            ?.length
+        ){
+
+          return {
+            unavailable:true,
+            rno
+          };
+        }
+
+        if(
+          resultRes.status!==
+          "fulfilled"
+
+          ||
+
+          !resultRes.value.finished
+        ){
+
+          return {
+            noResult:true,
+            rno
+          };
+        }
+
+        const before=
+          beforeRes.status===
+          "fulfilled"
+
+            ?beforeRes.value
+
+            :{
+                racers:[]
+              };
+
+        const item=
+          buildHistoricalLearningItem(
+
+            raceRes.value.racers,
+
+            before,
+
+            resultRes.value,
+
+            {
+              date,
+              jcd,
+              rno,
+              venue:venueName
+            }
+          );
+
+        return item
+          ?{
+              item,
+              rno
+            }
+          :{
+              unavailable:true,
+              rno
+            };
+      },
+
+      (done,total)=>{
+
+        status.textContent=
+          `過去データ取得中… ${done}/${total}R`;
+
+      }
+    );
+
+  const history=
+    getHistory();
+
+  for(
+    const row of rows
+  ){
+
+    if(
+      !row
+      ||
+      row.error
+      ||
+      row.unavailable
+    ){
+
+      unavailable++;
+
+      continue;
+    }
+
+    if(
+      row.duplicate
+    ){
+
+      duplicate++;
+
+      continue;
+    }
+
+    if(
+      row.noResult
+    ){
+
+      noResult++;
+
+      continue;
+    }
+
+    if(
+      row.item
+    ){
+
+      history.push(
+        row.item
+      );
+
+      saved++;
+    }
+  }
+
+  saveHistory(
+    history
+  );
+
+  button.disabled=
+    false;
+
+  resetHistoryView();
+
+  const learnedNow=
+    getTrainableHistory()
+      .length;
+
+  status.innerHTML=`
+    📚 過去学習取り込み完了
+    <br>
+    新規：${saved}R
+    <br>
+    既存データ：${duplicate}R
+    <br>
+    結果未取得：${noResult}R
+    <br>
+    データ不足：${unavailable}R
+    <br>
+    現在の重複除去後 学習レース数：
+    ${learnedNow}R
+  `;
+}
+
+const v6612PastButton=
+  $("importPastLearning");
+
+if(
+  v6612PastButton
+){
+
+  v6612PastButton.onclick=
+    importPastLearningRaces;
+}
+
+/* 比較表示をV6.6.12へ更新 */
+
+const renderComparisonsV6611=
+  renderComparisons;
+
+renderComparisons=function(){
+
+  renderComparisonsV6611();
+
+  const box=
+    $("versionComparison");
+
+  if(box){
+
+    const parentTitle=
+      box.parentElement
+        ?.querySelector(
+          ".title"
+        );
+
+    if(
+      parentTitle
+    ){
+
+      parentTitle.textContent=
+        "V6.6.11 → V6.6.12 比較";
+    }
+
+    box.innerHTML=
+
+      comparisonHtml(
+        "旧 V6.6.11 上位6点",
+        comparisonData(
+          "p6",
+          "all",
+          "6.6.11"
+        )
+      )
+
+      +
+
+      comparisonHtml(
+        "新 V6.6.12 上位6点",
+        comparisonData(
+          "p6",
+          "all",
+          "6.6.12"
+        )
+      )
+
+      +
+
+      comparisonHtml(
+        "新 V6.6.12 上位10点",
+        comparisonData(
+          "p10",
+          "all",
+          "6.6.12"
+        )
+      )
+
+      +
+
+      comparisonHtml(
+        "新 V6.6.12 上位15点",
+        comparisonData(
+          "p15",
+          "all",
+          "6.6.12"
+        )
+      );
+  }
+};
+
+renderHistory();
+
+</script>
 </body>
 </html>
