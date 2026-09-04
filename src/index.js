@@ -1,5 +1,5 @@
 const OFFICIAL = "https://www.boatrace.jp";
-const WORKER_VERSION = "6.3.0";
+const WORKER_VERSION = "6.3.1";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -77,8 +77,7 @@ function deadlineIsoJST(hd, time) {
   const mm = hd.slice(4, 6);
   const dd = hd.slice(6, 8);
 
-  const [h, m] =
-    time.split(":");
+  const [h, m] = time.split(":");
 
   return (
     `${yyyy}-${mm}-${dd}` +
@@ -124,7 +123,6 @@ const PREF =
   "熊本|大分|宮崎|鹿児島|沖縄)";
 
 function value(v) {
-
   if (
     v === undefined ||
     v === null ||
@@ -140,13 +138,11 @@ function value(v) {
     : null;
 }
 
-
 /* =========================
    開催場
 ========================= */
 
 async function venues(hd) {
-
   const html =
     await officialFetch(
       `/owpc/pc/race/index?hd=${hd}`
@@ -156,35 +152,25 @@ async function venues(hd) {
     ...html.matchAll(
       /[?&]jcd=(\d{2})/g
     )
-  ].map(
-    m => m[1]
-  );
+  ].map(m => m[1]);
 
   const ids =
     [...new Set(found)];
 
   return ids
-    .filter(
-      jcd => VENUE_NAMES[jcd]
-    )
-    .map(
-      jcd => ({
-        jcd,
-        name:
-          VENUE_NAMES[jcd]
-      })
-    );
+    .filter(jcd => VENUE_NAMES[jcd])
+    .map(jcd => ({
+      jcd,
+      name: VENUE_NAMES[jcd]
+    }));
 }
-
 
 /* =========================
    締切予定時刻
 ========================= */
 
 function parseRaceDeadlines(html) {
-
-  const deadlines =
-    new Map();
+  const deadlines = new Map();
 
   const text =
     stripHtml(html);
@@ -195,57 +181,33 @@ function parseRaceDeadlines(html) {
   let match;
 
   while (
-    (match =
-      textRegex.exec(text))
-      !== null
+    (match = textRegex.exec(text)) !== null
   ) {
-
     const rno =
       Number(match[1]);
 
     const time =
-      match[2]
-        .padStart(5, "0");
+      match[2].padStart(5, "0");
 
-    if (
-      !deadlines.has(rno)
-    ) {
-      deadlines.set(
-        rno,
-        time
-      );
+    if (!deadlines.has(rno)) {
+      deadlines.set(rno, time);
     }
   }
 
-  /*
-    HTML構造変更時の予備
-  */
-
-  if (
-    deadlines.size < 12
-  ) {
-
+  if (deadlines.size < 12) {
     const rows = [
       ...html.matchAll(
         /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
       )
     ];
 
-    for (
-      const rowMatch of rows
-    ) {
-
+    for (const rowMatch of rows) {
       const rowText =
-        stripHtml(
-          rowMatch[1]
-        );
-
-      const rowRegex =
-        /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/;
+        stripHtml(rowMatch[1]);
 
       const row =
         rowText.match(
-          rowRegex
+          /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/
         );
 
       if (!row) {
@@ -256,16 +218,10 @@ function parseRaceDeadlines(html) {
         Number(row[1]);
 
       const time =
-        row[2]
-          .padStart(5, "0");
+        row[2].padStart(5, "0");
 
-      if (
-        !deadlines.has(rno)
-      ) {
-        deadlines.set(
-          rno,
-          time
-        );
+      if (!deadlines.has(rno)) {
+        deadlines.set(rno, time);
       }
     }
   }
@@ -273,16 +229,11 @@ function parseRaceDeadlines(html) {
   return deadlines;
 }
 
-
 /* =========================
    レース一覧
 ========================= */
 
-async function venueData(
-  hd,
-  jcd
-) {
-
+async function venueData(hd, jcd) {
   const html =
     await officialFetch(
       `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
@@ -292,9 +243,7 @@ async function venueData(
     stripHtml(html);
 
   const deadlines =
-    parseRaceDeadlines(
-      html
-    );
+    parseRaceDeadlines(html);
 
   const races = [];
 
@@ -303,7 +252,6 @@ async function venueData(
     rno <= 12;
     rno++
   ) {
-
     const re =
       new RegExp(
         `(?:^|\\s)${rno}R(?:\\s|$)`,
@@ -312,56 +260,37 @@ async function venueData(
 
     if (
       re.test(text) ||
-      html.includes(
-        `rno=${rno}`
-      )
+      html.includes(`rno=${rno}`)
     ) {
-
       const deadline =
-        deadlines.get(rno)
-        || null;
+        deadlines.get(rno) || null;
 
       races.push({
-
         rno,
-
-        status:
-          "出走情報あり",
-
+        status: "出走情報あり",
         deadline,
-
         deadlineJST:
           deadline
-            ? deadlineIsoJST(
-                hd,
-                deadline
-              )
+            ? deadlineIsoJST(hd, deadline)
             : null
       });
     }
   }
 
   return {
-
     hd,
-
     jcd,
-
     venue:
-      VENUE_NAMES[jcd]
-      || jcd,
-
+      VENUE_NAMES[jcd] || jcd,
     races
   };
 }
-
 
 /* =========================
    選手情報
 ========================= */
 
 function parseRacers(html) {
-
   const text =
     stripHtml(html);
 
@@ -379,43 +308,30 @@ function parseRacers(html) {
     "(\\d+(?:\\.\\d+)?)kg\\s+" +
     "F(\\d+)\\s+" +
     "L(\\d+)\\s+" +
-
-    num + "\\s+" +
-
     num + "\\s+" +
     num + "\\s+" +
     num + "\\s+" +
-
     num + "\\s+" +
     num + "\\s+" +
     num + "\\s+" +
-
+    num + "\\s+" +
     "(\\d+)\\s+" +
     num + "\\s+" +
     num + "\\s+" +
-
     "(\\d+)\\s+" +
     num + "\\s+" +
     num;
 
   const regex =
-    new RegExp(
-      pattern,
-      "g"
-    );
+    new RegExp(pattern, "g");
 
   let match;
 
   while (
-    (match =
-      regex.exec(text))
-      !== null
-    &&
+    (match = regex.exec(text)) !== null &&
     racers.length < 6
   ) {
-
     racers.push({
-
       lane:
         racers.length + 1,
 
@@ -427,110 +343,61 @@ function parseRacers(html) {
 
       name:
         match[3]
-          .replace(
-            /\s+/g,
-            " "
-          )
+          .replace(/\s+/g, " ")
           .trim(),
 
       branchOrigin:
         match[4],
 
       age:
-        value(
-          match[5]
-        ),
+        value(match[5]),
 
       weight:
-        value(
-          match[6]
-        ),
+        value(match[6]),
 
       fCount:
-        value(
-          match[7]
-        ),
+        value(match[7]),
 
       lCount:
-        value(
-          match[8]
-        ),
+        value(match[8]),
 
       avgST:
-        value(
-          match[9]
-        ),
+        value(match[9]),
 
       national: {
-
         winRate:
-          value(
-            match[10]
-          ),
-
+          value(match[10]),
         secondRate:
-          value(
-            match[11]
-          ),
-
+          value(match[11]),
         thirdRate:
-          value(
-            match[12]
-          )
+          value(match[12])
       },
 
       local: {
-
         winRate:
-          value(
-            match[13]
-          ),
-
+          value(match[13]),
         secondRate:
-          value(
-            match[14]
-          ),
-
+          value(match[14]),
         thirdRate:
-          value(
-            match[15]
-          )
+          value(match[15])
       },
 
       motor: {
-
         number:
-          value(
-            match[16]
-          ),
-
+          value(match[16]),
         secondRate:
-          value(
-            match[17]
-          ),
-
+          value(match[17]),
         thirdRate:
-          value(
-            match[18]
-          )
+          value(match[18])
       },
 
       boat: {
-
         number:
-          value(
-            match[19]
-          ),
-
+          value(match[19]),
         secondRate:
-          value(
-            match[20]
-          ),
-
+          value(match[20]),
         thirdRate:
-          value(
-            match[21]
-          )
+          value(match[21])
       }
     });
   }
@@ -538,47 +405,33 @@ function parseRacers(html) {
   return racers;
 }
 
-
 async function raceData(
   hd,
   jcd,
   rno
 ) {
-
   const html =
     await officialFetch(
       `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
     );
 
   return {
-
     hd,
-
     jcd,
-
     venue:
-      VENUE_NAMES[jcd]
-      || jcd,
-
+      VENUE_NAMES[jcd] || jcd,
     rno:
       Number(rno),
-
     racers:
-      parseRacers(
-        html
-      )
+      parseRacers(html)
   };
 }
-
 
 /* =========================
    直前情報
 ========================= */
 
-function parseBeforeInfo(
-  html
-) {
-
+function parseBeforeInfo(html) {
   const text =
     stripHtml(html);
 
@@ -590,51 +443,33 @@ function parseBeforeInfo(
   let match;
 
   while (
-    (match =
-      racerRegex.exec(text))
-      !== null
-    &&
+    (match = racerRegex.exec(text)) !== null &&
     racers.length < 6
   ) {
-
     const lane =
-      Number(
-        match[1]
-      );
+      Number(match[1]);
 
     if (
       !racers.some(
-        r =>
-          r.lane === lane
+        r => r.lane === lane
       )
     ) {
-
       racers.push({
-
         lane,
 
         name:
           match[2]
-            .replace(
-              /\s+/g,
-              " "
-            )
+            .replace(/\s+/g, " ")
             .trim(),
 
         weight:
-          value(
-            match[3]
-          ),
+          value(match[3]),
 
         exhibitionTime:
-          value(
-            match[4]
-          ),
+          value(match[4]),
 
         tilt:
-          value(
-            match[5]
-          ),
+          value(match[5]),
 
         course:
           null,
@@ -644,7 +479,6 @@ function parseBeforeInfo(
       });
     }
   }
-
 
   const startIndex =
     text.indexOf(
@@ -658,21 +492,15 @@ function parseBeforeInfo(
 
   let startText = "";
 
-  if (
-    startIndex >= 0
-  ) {
-
+  if (startIndex >= 0) {
     startText =
       weatherIndex > startIndex
         ? text.slice(
             startIndex,
             weatherIndex
           )
-        : text.slice(
-            startIndex
-          );
+        : text.slice(startIndex);
   }
-
 
   const startRegex =
     /(?:^|\s)([1-6])\s+\.([0-9]{2})(?=\s|$)/g;
@@ -680,38 +508,24 @@ function parseBeforeInfo(
   const starts = [];
 
   while (
-    (match =
-      startRegex.exec(startText))
-      !== null
-    &&
+    (match = startRegex.exec(startText)) !== null &&
     starts.length < 6
   ) {
-
     starts.push({
-
       course:
-        Number(
-          match[1]
-        ),
+        Number(match[1]),
 
       exhibitionST:
-        Number(
-          `0.${match[2]}`
-        )
+        Number(`0.${match[2]}`)
     });
   }
 
-
   racers.forEach(
     (racer, index) => {
-
       const start =
         starts[index];
 
-      if (
-        start
-      ) {
-
+      if (start) {
         racer.course =
           start.course;
 
@@ -720,7 +534,6 @@ function parseBeforeInfo(
       }
     }
   );
-
 
   const temp =
     text.match(
@@ -742,13 +555,10 @@ function parseBeforeInfo(
       /波高\s*(\d+(?:\.\d+)?)cm/
     );
 
-
   return {
-
     racers,
 
     weather: {
-
       temperature:
         temp
           ? Number(temp[1])
@@ -772,61 +582,41 @@ function parseBeforeInfo(
   };
 }
 
-
 async function beforeData(
   hd,
   jcd,
   rno
 ) {
-
   const html =
     await officialFetch(
       `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
     );
 
   return {
-
     hd,
-
     jcd,
 
     venue:
-      VENUE_NAMES[jcd]
-      || jcd,
+      VENUE_NAMES[jcd] || jcd,
 
     rno:
       Number(rno),
 
-    ...parseBeforeInfo(
-      html
-    )
+    ...parseBeforeInfo(html)
   };
 }
-
 
 /* =========================
    3連単オッズ
 ========================= */
 
-function cellText(
-  html
-) {
-
-  return stripHtml(
-    html
-  )
-    .replace(
-      /倍$/g,
-      ""
-    )
+function cellText(html) {
+  return stripHtml(html)
+    .replace(/倍$/g, "")
     .trim();
 }
 
-
-function expandTable(
-  tableHtml
-) {
-
+function expandTable(tableHtml) {
   const rowMatches = [
     ...tableHtml.matchAll(
       /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
@@ -834,14 +624,9 @@ function expandTable(
   ];
 
   const pending = {};
-
   const grid = [];
 
-  for (
-    const rowMatch of
-    rowMatches
-  ) {
-
+  for (const rowMatch of rowMatches) {
     const cells = [
       ...rowMatch[1].matchAll(
         /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi
@@ -849,28 +634,18 @@ function expandTable(
     ];
 
     const row = [];
-
     let col = 0;
 
-
     function usePending() {
-
-      while (
-        pending[col]
-      ) {
-
+      while (pending[col]) {
         row[col] =
-          pending[col]
-            .value;
+          pending[col].value;
 
-        pending[col]
-          .remaining--;
+        pending[col].remaining--;
 
         if (
-          pending[col]
-            .remaining <= 0
+          pending[col].remaining <= 0
         ) {
-
           delete pending[col];
         }
 
@@ -878,23 +653,16 @@ function expandTable(
       }
     }
 
-
     usePending();
 
-
-    for (
-      const cell of cells
-    ) {
-
+    for (const cell of cells) {
       usePending();
 
       const attrs =
         cell[2] || "";
 
       const text =
-        cellText(
-          cell[3]
-        );
+        cellText(cell[3]);
 
       const rowspanMatch =
         attrs.match(
@@ -908,37 +676,24 @@ function expandTable(
 
       const rowspan =
         rowspanMatch
-          ? Number(
-              rowspanMatch[1]
-            )
+          ? Number(rowspanMatch[1])
           : 1;
 
       const colspan =
         colspanMatch
-          ? Number(
-              colspanMatch[1]
-            )
+          ? Number(colspanMatch[1])
           : 1;
-
 
       for (
         let i = 0;
         i < colspan;
         i++
       ) {
+        row[col] = text;
 
-        row[col] =
-          text;
-
-        if (
-          rowspan > 1
-        ) {
-
+        if (rowspan > 1) {
           pending[col] = {
-
-            value:
-              text,
-
+            value: text,
             remaining:
               rowspan - 1
           };
@@ -948,40 +703,24 @@ function expandTable(
       }
     }
 
-
     usePending();
 
-    grid.push(
-      row
-    );
+    grid.push(row);
   }
-
 
   return grid;
 }
 
-
-function isBoatNumber(
-  v
-) {
-
+function isBoatNumber(v) {
   return /^[1-6]$/.test(
-    String(v || "")
-      .trim()
+    String(v || "").trim()
   );
 }
 
-
-function parseOdd(
-  v
-) {
-
+function parseOdd(v) {
   const text =
     String(v || "")
-      .replace(
-        /,/g,
-        ""
-      )
+      .replace(/,/g, "")
       .trim();
 
   if (
@@ -989,7 +728,6 @@ function parseOdd(
     text === "-" ||
     text === "欠場"
   ) {
-
     return null;
   }
 
@@ -1001,11 +739,7 @@ function parseOdd(
     : null;
 }
 
-
-function parseOdds(
-  html
-) {
-
+function parseOdds(html) {
   const tables = [
     ...html.matchAll(
       /<table\b[^>]*>([\s\S]*?)<\/table>/gi
@@ -1015,27 +749,16 @@ function parseOdds(
   const map =
     new Map();
 
-
-  for (
-    const table of tables
-  ) {
-
+  for (const table of tables) {
     const grid =
-      expandTable(
-        table[0]
-      );
+      expandTable(table[0]);
 
-
-    for (
-      const row of grid
-    ) {
-
+    for (const row of grid) {
       for (
         let first = 1;
         first <= 6;
         first++
       ) {
-
         const base =
           (first - 1) * 3;
 
@@ -1050,60 +773,40 @@ function parseOdds(
             row[base + 2]
           );
 
-
         if (
-          !isBoatNumber(
-            second
-          ) ||
-          !isBoatNumber(
-            third
-          ) ||
+          !isBoatNumber(second) ||
+          !isBoatNumber(third) ||
           odd === null
         ) {
-
           continue;
         }
 
-
         const secondNum =
-          Number(
-            second
-          );
+          Number(second);
 
         const thirdNum =
-          Number(
-            third
-          );
-
+          Number(third);
 
         if (
           first === secondNum ||
           first === thirdNum ||
           secondNum === thirdNum
         ) {
-
           continue;
         }
-
 
         const combination =
           `${first}-${secondNum}-${thirdNum}`;
 
-
         map.set(
           combination,
           {
-
             combination,
-
             first,
-
             second:
               secondNum,
-
             third:
               thirdNum,
-
             odds:
               odd
           }
@@ -1112,38 +815,30 @@ function parseOdds(
     }
   }
 
-
   return [
     ...map.values()
   ];
 }
-
 
 async function oddsData(
   hd,
   jcd,
   rno
 ) {
-
   const html =
     await officialFetch(
       `/owpc/pc/race/odds3t?hd=${hd}&jcd=${jcd}&rno=${rno}`
     );
 
   const odds =
-    parseOdds(
-      html
-    );
+    parseOdds(html);
 
   return {
-
     hd,
-
     jcd,
 
     venue:
-      VENUE_NAMES[jcd]
-      || jcd,
+      VENUE_NAMES[jcd] || jcd,
 
     rno:
       Number(rno),
@@ -1158,92 +853,51 @@ async function oddsData(
   };
 }
 
-
 /* =========================
    結果取得
 ========================= */
 
-function parsePayout(
-  text
-) {
-
-  if (
-    !text
-  ) {
+function parsePayout(text) {
+  if (!text) {
     return null;
   }
-
 
   const cleaned =
-    decodeHtml(
-      text
-    )
-      .replace(
-        /[¥￥円]/g,
-        ""
-      )
-      .replace(
-        /,/g,
-        ""
-      )
-      .replace(
-        /\s+/g,
-        ""
-      )
+    decodeHtml(text)
+      .replace(/[¥￥円]/g, "")
+      .replace(/,/g, "")
+      .replace(/\s+/g, "")
       .trim();
 
-
   const match =
-    cleaned.match(
-      /(\d+)/
-    );
+    cleaned.match(/(\d+)/);
 
-
-  if (
-    !match
-  ) {
+  if (!match) {
     return null;
   }
 
-
   const n =
-    Number(
-      match[1]
-    );
-
+    Number(match[1]);
 
   return Number.isFinite(n)
     ? n
     : null;
 }
 
-
-function normalizeCombination(
-  text
-) {
-
-  if (
-    !text
-  ) {
+function normalizeCombination(text) {
+  if (!text) {
     return null;
   }
 
-
   const match =
-    stripHtml(
-      text
-    )
+    stripHtml(text)
       .match(
         /([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])/
       );
 
-
-  if (
-    !match
-  ) {
+  if (!match) {
     return null;
   }
-
 
   return (
     `${match[1]}-` +
@@ -1252,25 +906,16 @@ function normalizeCombination(
   );
 }
 
-
-function parseTrifectaResult(
-  html
-) {
-
+function parseTrifectaResult(html) {
   const rows = [
     ...html.matchAll(
       /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
     )
   ];
 
-
-  for (
-    const rowMatch of rows
-  ) {
-
+  for (const rowMatch of rows) {
     const rowHtml =
       rowMatch[1];
-
 
     const cells = [
       ...rowHtml.matchAll(
@@ -1279,54 +924,36 @@ function parseTrifectaResult(
     ]
       .map(
         cell =>
-          stripHtml(
-            cell[1]
-          )
+          stripHtml(cell[1])
       )
-      .filter(
-        Boolean
-      );
+      .filter(Boolean);
 
-
-    if (
-      !cells.length
-    ) {
+    if (!cells.length) {
       continue;
     }
-
 
     const rowText =
       cells.join(" ");
 
-
     if (
-      !rowText.includes(
-        "3連単"
-      )
+      !rowText.includes("3連単")
     ) {
       continue;
     }
-
 
     const combination =
       normalizeCombination(
         rowText
       );
 
-
     let payout =
       null;
 
-
-    if (
-      combination
-    ) {
-
+    if (combination) {
       const comboPosition =
         rowText.indexOf(
           combination
         );
-
 
       const afterCombo =
         comboPosition >= 0
@@ -1336,19 +963,13 @@ function parseTrifectaResult(
             )
           : rowText;
 
-
       const yenMatch =
-        decodeHtml(
-          afterCombo
-        ).match(
-          /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
-        );
+        decodeHtml(afterCombo)
+          .match(
+            /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
+          );
 
-
-      if (
-        yenMatch
-      ) {
-
+      if (yenMatch) {
         payout =
           parsePayout(
             yenMatch[1] ||
@@ -1356,20 +977,14 @@ function parseTrifectaResult(
           );
       }
 
-
-      if (
-        payout === null
-      ) {
-
+      if (payout === null) {
         const comboCellIndex =
           cells.findIndex(
             cell =>
               normalizeCombination(
                 cell
-              ) ===
-              combination
+              ) === combination
           );
-
 
         if (
           comboCellIndex >= 0 &&
@@ -1377,7 +992,6 @@ function parseTrifectaResult(
             comboCellIndex + 1
           ]
         ) {
-
           payout =
             parsePayout(
               cells[
@@ -1388,12 +1002,10 @@ function parseTrifectaResult(
       }
     }
 
-
     if (
       combination &&
       payout !== null
     ) {
-
       return {
         combination,
         payout
@@ -1401,33 +1013,20 @@ function parseTrifectaResult(
     }
   }
 
-
   return {
-
-    combination:
-      null,
-
-    payout:
-      null
+    combination: null,
+    payout: null
   };
 }
 
-
-function parseOrder(
-  html
-) {
-
+function parseOrder(html) {
   const text =
-    stripHtml(
-      html
-    );
-
+    stripHtml(html);
 
   const startInfoIndex =
     text.indexOf(
       "スタート情報"
     );
-
 
   const resultSection =
     startInfoIndex >= 0
@@ -1437,106 +1036,68 @@ function parseOrder(
         )
       : text;
 
-
   const order = [];
-
 
   const first =
     resultSection.match(
       /(?:^|\s)(?:１|1)\s+([1-6])\s+\d{4}\s+/
     );
 
-
   const second =
     resultSection.match(
       /(?:^|\s)(?:２|2)\s+([1-6])\s+\d{4}\s+/
     );
-
 
   const third =
     resultSection.match(
       /(?:^|\s)(?:３|3)\s+([1-6])\s+\d{4}\s+/
     );
 
-
-  if (
-    first
-  ) {
+  if (first) {
     order.push(
-      Number(
-        first[1]
-      )
+      Number(first[1])
     );
   }
 
-
-  if (
-    second
-  ) {
+  if (second) {
     order.push(
-      Number(
-        second[1]
-      )
+      Number(second[1])
     );
   }
 
-
-  if (
-    third
-  ) {
+  if (third) {
     order.push(
-      Number(
-        third[1]
-      )
+      Number(third[1])
     );
   }
-
 
   return order;
 }
 
-
-function parseResult(
-  html
-) {
-
+function parseResult(html) {
   const text =
-    stripHtml(
-      html
-    );
-
+    stripHtml(html);
 
   const trifecta =
-    parseTrifectaResult(
-      html
-    );
-
+    parseTrifectaResult(html);
 
   let order =
-    parseOrder(
-      html
-    );
-
+    parseOrder(html);
 
   if (
     order.length < 3 &&
     trifecta.combination
   ) {
-
     order =
       trifecta.combination
         .split("-")
-        .map(
-          Number
-        );
+        .map(Number);
   }
-
 
   const methodMatch =
     text.match(
       /決まり手\s*(逃げ|差し|まくり差し|まくり|抜き|恵まれ)/
     );
-
 
   const finished =
     Boolean(
@@ -1544,9 +1105,7 @@ function parseResult(
       trifecta.payout !== null
     );
 
-
   return {
-
     finished,
 
     combination:
@@ -1561,10 +1120,7 @@ function parseResult(
 
     winningLanes:
       finished
-        ? order.slice(
-            0,
-            3
-          )
+        ? order.slice(0, 3)
         : [],
 
     method:
@@ -1574,89 +1130,61 @@ function parseResult(
   };
 }
 
-
 async function resultData(
   hd,
   jcd,
   rno
 ) {
-
   const html =
     await officialFetch(
       `/owpc/pc/race/raceresult?hd=${hd}&jcd=${jcd}&rno=${rno}`
     );
 
-
   return {
-
     hd,
-
     jcd,
 
     venue:
-      VENUE_NAMES[jcd]
-      || jcd,
+      VENUE_NAMES[jcd] || jcd,
 
     rno:
       Number(rno),
 
-    ...parseResult(
-      html
-    )
+    ...parseResult(html)
   };
 }
-
 
 /* =========================
    パラメータ
 ========================= */
 
-function getRaceParams(
-  url
-) {
-
+function getRaceParams(url) {
   return {
-
     hd:
-      url.searchParams.get(
-        "hd"
-      )
-      ||
+      url.searchParams.get("hd") ||
       todayJST(),
 
     jcd:
-      url.searchParams.get(
-        "jcd"
-      ),
+      url.searchParams.get("jcd"),
 
     rno:
       Number(
-        url.searchParams.get(
-          "rno"
-        )
+        url.searchParams.get("rno")
       )
   };
 }
-
 
 function validateRace(
   jcd,
   rno
 ) {
-
   if (
     !jcd ||
-    !/^\d{2}$/.test(
-      jcd
-    )
+    !/^\d{2}$/.test(jcd)
   ) {
-
     return json(
       {
-
-        ok:
-          false,
-
+        ok: false,
         error:
           "jcdが必要です"
       },
@@ -1664,23 +1192,14 @@ function validateRace(
     );
   }
 
-
   if (
-    !Number.isInteger(
-      rno
-    )
-    ||
-    rno < 1
-    ||
+    !Number.isInteger(rno) ||
+    rno < 1 ||
     rno > 12
   ) {
-
     return json(
       {
-
-        ok:
-          false,
-
+        ok: false,
         error:
           "rnoは1〜12で指定してください"
       },
@@ -1688,110 +1207,121 @@ function validateRace(
     );
   }
 
-
   return null;
 }
-
 
 /* =========================
    Worker
 ========================= */
 
 export default {
-
   async fetch(
     request,
     env
   ) {
-
     const url =
-      new URL(
-        request.url
-      );
-
+      new URL(request.url);
 
     try {
 
+      /* -------------------------
+         通常ヘルスチェック
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/health"
       ) {
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           version:
             WORKER_VERSION,
-
           deadlineSupport:
+            true,
+          d1Support:
             true
         });
       }
 
+      /* -------------------------
+         D1接続チェック
+      ------------------------- */
+
+      if (
+        url.pathname ===
+        "/api/db-health"
+      ) {
+        if (!env.DB) {
+          return json(
+            {
+              ok: false,
+              connected: false,
+              error:
+                "DB binding が見つかりません"
+            },
+            500
+          );
+        }
+
+        const result =
+          await env.DB
+            .prepare(
+              "SELECT 1 AS test"
+            )
+            .first();
+
+        return json({
+          ok: true,
+          database:
+            "usa-lab-ai",
+          connected:
+            true,
+          result
+        });
+      }
+
+      /* -------------------------
+         開催場
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/venues"
       ) {
-
         const hd =
-          url.searchParams.get(
-            "hd"
-          )
-          ||
+          url.searchParams.get("hd") ||
           todayJST();
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           hd,
-
           venues:
-            await venues(
-              hd
-            )
+            await venues(hd)
         });
       }
 
+      /* -------------------------
+         レース一覧＋締切
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/venue"
       ) {
-
         const hd =
-          url.searchParams.get(
-            "hd"
-          )
-          ||
+          url.searchParams.get("hd") ||
           todayJST();
 
-
         const jcd =
-          url.searchParams.get(
-            "jcd"
-          );
-
+          url.searchParams.get("jcd");
 
         if (
           !jcd ||
-          !/^\d{2}$/.test(
-            jcd
-          )
+          !/^\d{2}$/.test(jcd)
         ) {
-
           return json(
             {
-
-              ok:
-                false,
-
+              ok: false,
               error:
                 "jcdが必要です"
             },
@@ -1799,12 +1329,8 @@ export default {
           );
         }
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           ...(
             await venueData(
               hd,
@@ -1814,21 +1340,20 @@ export default {
         });
       }
 
+      /* -------------------------
+         選手情報
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/race"
       ) {
-
         const {
           hd,
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
-
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -1836,19 +1361,12 @@ export default {
             rno
           );
 
-
-        if (
-          error
-        ) {
+        if (error) {
           return error;
         }
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           ...(
             await raceData(
               hd,
@@ -1859,21 +1377,20 @@ export default {
         });
       }
 
+      /* -------------------------
+         直前情報
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/before"
       ) {
-
         const {
           hd,
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
-
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -1881,19 +1398,12 @@ export default {
             rno
           );
 
-
-        if (
-          error
-        ) {
+        if (error) {
           return error;
         }
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           ...(
             await beforeData(
               hd,
@@ -1904,21 +1414,20 @@ export default {
         });
       }
 
+      /* -------------------------
+         3連単オッズ
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/odds"
       ) {
-
         const {
           hd,
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
-
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -1926,19 +1435,12 @@ export default {
             rno
           );
 
-
-        if (
-          error
-        ) {
+        if (error) {
           return error;
         }
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           ...(
             await oddsData(
               hd,
@@ -1949,21 +1451,20 @@ export default {
         });
       }
 
+      /* -------------------------
+         結果
+      ------------------------- */
 
       if (
         url.pathname ===
         "/api/result"
       ) {
-
         const {
           hd,
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
-
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -1971,19 +1472,12 @@ export default {
             rno
           );
 
-
-        if (
-          error
-        ) {
+        if (error) {
           return error;
         }
 
-
         return json({
-
-          ok:
-            true,
-
+          ok: true,
           ...(
             await resultData(
               hd,
@@ -1994,25 +1488,16 @@ export default {
         });
       }
 
-
       return env.ASSETS.fetch(
         request
       );
 
-
-    } catch (
-      error
-    ) {
-
+    } catch (error) {
       return json(
         {
-
-          ok:
-            false,
-
+          ok: false,
           error:
-            error?.message
-            ||
+            error?.message ||
             String(error)
         },
         502
