@@ -25,5 +25,11 @@
       "database_name": "usa-lab-ai",
       "database_id": "ef8c4cec-8efc-4131-a17d-dd8407646384"
     }
-  ]
+  ],
+
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  }
 }
