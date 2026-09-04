@@ -7294,5 +7294,719 @@ export default {
       )
     );
   }
-};
+};/* =========================================================
+   V6.4.2
+   結果自動取得 → D1更新 → 的中判定 → 次回学習
+   既存コードは変更せず、一番下に追加するだけ
+========================================================= */
+
+function jstDateKeyOffset(days = 0) {
+  const date =
+    new Date(
+      Date.now() +
+      days * 86400000
+    );
+
+  return new Intl.DateTimeFormat(
+    "ja-JP",
+    {
+      timeZone:
+        "Asia/Tokyo",
+
+      year:
+        "numeric",
+
+      month:
+        "2-digit",
+
+      day:
+        "2-digit"
+    }
+  )
+    .format(date)
+    .replaceAll("/", "");
+}
+
+
+/* =========================================================
+   未確定レース取得
+   直近7日分まで取りこぼしを回収
+========================================================= */
+
+async function listPendingResultRaces(
+  env
+) {
+  const fromDate =
+    jstDateKeyOffset(-7);
+
+  const toDate =
+    todayJST();
+
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          jcd,
+          venue,
+          rno
+
+        FROM learning_races
+
+        WHERE finished = 0
+          AND race_date >= ?
+          AND race_date <= ?
+
+        ORDER BY
+          race_date ASC,
+          rno ASC
+
+        LIMIT 80
+      `)
+      .bind(
+        fromDate,
+        toDate
+      )
+      .all();
+
+  return (
+    result.results ||
+    []
+  );
+}
+
+
+/* =========================================================
+   predictions側にも結果・的中判定を保存
+========================================================= */
+
+async function updatePredictionResult(
+  env,
+  raceKey,
+  raceResult
+) {
+  const row =
+    await env.DB
+      .prepare(`
+        SELECT
+          prediction_json
+
+        FROM predictions
+
+        WHERE race_key = ?
+
+        LIMIT 1
+      `)
+      .bind(
+        raceKey
+      )
+      .first();
+
+  if (
+    !row ||
+    !row.prediction_json
+  ) {
+    return {
+      predictionExists:
+        false
+    };
+  }
+
+  const snapshot =
+    parseJsonSafe(
+      row.prediction_json,
+      {}
+    ) || {};
+
+  const combination =
+    raceResult
+      .combination;
+
+  const main15 =
+    Array.isArray(
+      snapshot.bets
+    )
+      ? snapshot.bets
+      : [];
+
+  const main6 =
+    main15.slice(
+      0,
+      6
+    );
+
+  const holes =
+    Array.isArray(
+      snapshot.holeBets
+    )
+      ? snapshot.holeBets
+      : [];
+
+  const main6Hit =
+    main6.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const main15Hit =
+    main15.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const holeHit =
+    holes.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const hit =
+    main6Hit ||
+    main15Hit ||
+    holeHit;
+
+  snapshot.result =
+    raceResult;
+
+  snapshot.resultCheck = {
+    checkedAt:
+      new Date()
+        .toISOString(),
+
+    combination,
+
+    payout:
+      raceResult.payout,
+
+    main6Hit,
+
+    main15Hit,
+
+    holeHit,
+
+    hit
+  };
+
+  await env.DB
+    .prepare(`
+      UPDATE predictions
+
+      SET
+        prediction_json = ?,
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE race_key = ?
+    `)
+    .bind(
+      JSON.stringify(
+        snapshot
+      ),
+
+      raceKey
+    )
+    .run();
+
+  return {
+    predictionExists:
+      true,
+
+    main6Hit,
+
+    main15Hit,
+
+    holeHit,
+
+    hit
+  };
+}
+
+
+/* =========================================================
+   今日のレース締切を取得
+========================================================= */
+
+async function makeTodayDeadlineMap(
+  rows
+) {
+  const today =
+    todayJST();
+
+  const todayRows =
+    rows.filter(
+      row =>
+        String(
+          row.race_date
+        ) === today
+    );
+
+  if (
+    !todayRows.length
+  ) {
+    return new Map();
+  }
+
+  const venuesToCheck = [
+    ...new Map(
+      todayRows.map(
+        row => [
+          String(
+            row.jcd
+          ).padStart(
+            2,
+            "0"
+          ),
+
+          {
+            hd:
+              today,
+
+            jcd:
+              String(
+                row.jcd
+              ).padStart(
+                2,
+                "0"
+              )
+          }
+        ]
+      )
+    ).values()
+  ];
+
+  const results =
+    await mapChunks(
+      venuesToCheck,
+      4,
+
+      item =>
+        venueData(
+          item.hd,
+          item.jcd
+        )
+    );
+
+  const map =
+    new Map();
+
+  for (
+    const result of
+    results
+  ) {
+    if (
+      result.status !==
+      "fulfilled"
+    ) {
+      continue;
+    }
+
+    const venue =
+      result.value;
+
+    for (
+      const race of
+      venue.races || []
+    ) {
+      map.set(
+        makeRaceKey(
+          venue.hd,
+          venue.jcd,
+          race.rno
+        ),
+
+        race.deadlineJST ||
+        null
+      );
+    }
+  }
+
+  return map;
+}
+
+
+/* =========================================================
+   結果自動更新
+========================================================= */
+
+async function runResultUpdates(
+  env
+) {
+  const pending =
+    await listPendingResultRaces(
+      env
+    );
+
+  if (
+    !pending.length
+  ) {
+    return {
+      ok:true,
+
+      checkedAt:
+        new Date()
+          .toISOString(),
+
+      pending:
+        0,
+
+      due:
+        0,
+
+      checked:
+        0,
+
+      finished:
+        0,
+
+      waiting:
+        0,
+
+      results:[]
+    };
+  }
+
+  const today =
+    todayJST();
+
+  const deadlineMap =
+    await makeTodayDeadlineMap(
+      pending
+    );
+
+  const now =
+    Date.now();
+
+  const due = [];
+
+  let waiting = 0;
+
+  for (
+    const row of
+    pending
+  ) {
+    const raceDate =
+      String(
+        row.race_date
+      );
+
+    /*
+      昨日以前の未確定レースは
+      そのまま結果確認対象
+    */
+
+    if (
+      raceDate < today
+    ) {
+      due.push(
+        row
+      );
+
+      continue;
+    }
+
+    /*
+      今日のレースは
+      締切5分後から結果確認
+    */
+
+    const deadlineJST =
+      deadlineMap.get(
+        row.race_key
+      );
+
+    if (
+      !deadlineJST
+    ) {
+      waiting++;
+
+      continue;
+    }
+
+    const deadlineMs =
+      new Date(
+        deadlineJST
+      ).getTime();
+
+    if (
+      !Number.isFinite(
+        deadlineMs
+      )
+    ) {
+      waiting++;
+
+      continue;
+    }
+
+    if (
+      now <
+      deadlineMs +
+      5 * 60000
+    ) {
+      waiting++;
+
+      continue;
+    }
+
+    due.push(
+      row
+    );
+  }
+
+  const output = [];
+
+  let checked = 0;
+  let finished = 0;
+
+  /*
+    1回のCronで最大8R
+    公式サイトへのアクセス集中を防止
+  */
+
+  for (
+    const row of
+    due.slice(
+      0,
+      8
+    )
+  ) {
+    checked++;
+
+    try {
+      const raceResult =
+        await resultData(
+          String(
+            row.race_date
+          ),
+
+          String(
+            row.jcd
+          ).padStart(
+            2,
+            "0"
+          ),
+
+          Number(
+            row.rno
+          )
+        );
+
+      if (
+        !raceResult.finished
+      ) {
+        output.push({
+          raceKey:
+            row.race_key,
+
+          venue:
+            row.venue,
+
+          rno:
+            row.rno,
+
+          status:
+            "WAIT_RESULT"
+        });
+
+        continue;
+      }
+
+      /*
+        learning_racesへ結果保存
+        finished=1
+      */
+
+      await saveLearningRace(
+        env,
+        {
+          race_date:
+            String(
+              row.race_date
+            ),
+
+          jcd:
+            String(
+              row.jcd
+            ).padStart(
+              2,
+              "0"
+            ),
+
+          venue:
+            row.venue,
+
+          rno:
+            Number(
+              row.rno
+            ),
+
+          result:
+            raceResult,
+
+          finished:
+            true
+        }
+      );
+
+      /*
+        S評価でpredictionsにも
+        保存されている場合は
+        的中判定も追加
+      */
+
+      const predictionCheck =
+        await updatePredictionResult(
+          env,
+          row.race_key,
+          raceResult
+        );
+
+      finished++;
+
+      output.push({
+        raceKey:
+          row.race_key,
+
+        venue:
+          row.venue,
+
+        rno:
+          row.rno,
+
+        status:
+          "FINISHED",
+
+        combination:
+          raceResult.combination,
+
+        payout:
+          raceResult.payout,
+
+        ...predictionCheck
+      });
+
+    } catch (
+      error
+    ) {
+      output.push({
+        raceKey:
+          row.race_key,
+
+        venue:
+          row.venue,
+
+        rno:
+          row.rno,
+
+        status:
+          "ERROR",
+
+        error:
+          error?.message ||
+          String(
+            error
+          )
+      });
+    }
+  }
+
+  return {
+    ok:true,
+
+    checkedAt:
+      new Date()
+        .toISOString(),
+
+    pending:
+      pending.length,
+
+    due:
+      due.length,
+
+    checked,
+
+    finished,
+
+    waiting,
+
+    remainingDue:
+      Math.max(
+        0,
+        due.length -
+        checked
+      ),
+
+    results:
+      output
+  };
+}
+
+
+/* =========================================================
+   既存のrunAutoWindowへ結果更新を接続
+
+   これにより既存scheduled()を
+   書き換えなくても、
+
+   5分Cron
+   ↓
+   自動予想
+   ↓
+   結果自動確認
+   ↓
+   D1更新
+
+   が連続して動く
+========================================================= */
+
+const runAutoWindowBeforeResultUpdate =
+  runAutoWindow;
+
+runAutoWindow =
+  async function(
+    env,
+    options = {}
+  ) {
+    const autoResult =
+      await runAutoWindowBeforeResultUpdate(
+        env,
+        options
+      );
+
+    let resultUpdate;
+
+    try {
+      resultUpdate =
+        await runResultUpdates(
+          env
+        );
+
+    } catch (
+      error
+    ) {
+      console.error(
+        "結果自動更新エラー",
+        error
+      );
+
+      resultUpdate = {
+        ok:false,
+
+        error:
+          error?.message ||
+          String(
+            error
+          )
+      };
+    }
+
+    return {
+      ...autoResult,
+
+      resultUpdate
+    };
+  };
        
