@@ -1,5 +1,5 @@
 const OFFICIAL = "https://www.boatrace.jp";
-const WORKER_VERSION = "6.3.2";
+const WORKER_VERSION = "6.3.3";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -9,6 +9,55 @@ function json(data, status = 200) {
       "cache-control": "no-store"
     }
   });
+}
+
+/* =========================
+   PRIVATE API 認証
+========================= */
+
+function getBearerToken(request) {
+  const auth =
+    request.headers.get("authorization") || "";
+
+  if (
+    auth.toLowerCase().startsWith("bearer ")
+  ) {
+    return auth.slice(7).trim();
+  }
+
+  return "";
+}
+
+function checkPrivateAccess(request, env) {
+  if (!env.D1_WRITE_TOKEN) {
+    return json(
+      {
+        ok: false,
+        error:
+          "D1_WRITE_TOKEN がCloudflareに設定されていません"
+      },
+      503
+    );
+  }
+
+  const token =
+    getBearerToken(request);
+
+  if (
+    !token ||
+    token !== env.D1_WRITE_TOKEN
+  ) {
+    return json(
+      {
+        ok: false,
+        error:
+          "認証に失敗しました"
+      },
+      401
+    );
+  }
+
+  return null;
 }
 
 function decodeHtml(text = "") {
@@ -35,14 +84,18 @@ function stripHtml(html = "") {
 }
 
 async function officialFetch(path) {
-  const response = await fetch(OFFICIAL + path, {
-    headers: {
-      "user-agent":
-        `Mozilla/5.0 (compatible; BoatRacingAI/${WORKER_VERSION})`,
-      "accept":
-        "text/html,application/xhtml+xml"
-    }
-  });
+  const response =
+    await fetch(
+      OFFICIAL + path,
+      {
+        headers: {
+          "user-agent":
+            `Mozilla/5.0 (compatible; BoatRacingAI/${WORKER_VERSION})`,
+          "accept":
+            "text/html,application/xhtml+xml"
+        }
+      }
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -54,45 +107,72 @@ async function officialFetch(path) {
 }
 
 function todayJST() {
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  })
+  return new Intl.DateTimeFormat(
+    "ja-JP",
+    {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  )
     .format(new Date())
     .replaceAll("/", "");
 }
 
 function nowJST() {
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  })
-    .format(new Date())
-    .replace(" ", "T") + "+09:00";
+  return (
+    new Intl.DateTimeFormat(
+      "sv-SE",
+      {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }
+    )
+      .format(new Date())
+      .replace(" ", "T")
+    +
+    "+09:00"
+  );
 }
 
-function deadlineIsoJST(hd, time) {
-  if (!/^\d{8}$/.test(String(hd || ""))) {
+function deadlineIsoJST(
+  hd,
+  time
+) {
+  if (
+    !/^\d{8}$/.test(
+      String(hd || "")
+    )
+  ) {
     return null;
   }
 
-  if (!/^\d{1,2}:\d{2}$/.test(String(time || ""))) {
+  if (
+    !/^\d{1,2}:\d{2}$/.test(
+      String(time || "")
+    )
+  ) {
     return null;
   }
 
-  const yyyy = hd.slice(0, 4);
-  const mm = hd.slice(4, 6);
-  const dd = hd.slice(6, 8);
+  const yyyy =
+    hd.slice(0, 4);
 
-  const [h, m] = time.split(":");
+  const mm =
+    hd.slice(4, 6);
+
+  const dd =
+    hd.slice(6, 8);
+
+  const [h, m] =
+    time.split(":");
 
   return (
     `${yyyy}-${mm}-${dd}` +
@@ -146,17 +226,24 @@ function value(v) {
     return null;
   }
 
-  const n = Number(v);
+  const n =
+    Number(v);
 
   return Number.isFinite(n)
     ? n
     : null;
 }
 
-function clampLimit(v, fallback = 50) {
-  const n = Number(v);
+function clampLimit(
+  v,
+  fallback = 50
+) {
+  const n =
+    Number(v);
 
-  if (!Number.isInteger(n)) {
+  if (
+    !Number.isInteger(n)
+  ) {
     return fallback;
   }
 
@@ -174,7 +261,9 @@ function toJsonText(value) {
     return null;
   }
 
-  if (typeof value === "string") {
+  if (
+    typeof value === "string"
+  ) {
     return value;
   }
 
@@ -217,17 +306,25 @@ async function venues(hd) {
     ...html.matchAll(
       /[?&]jcd=(\d{2})/g
     )
-  ].map(m => m[1]);
+  ].map(
+    m => m[1]
+  );
 
   const ids =
     [...new Set(found)];
 
   return ids
-    .filter(jcd => VENUE_NAMES[jcd])
-    .map(jcd => ({
-      jcd,
-      name: VENUE_NAMES[jcd]
-    }));
+    .filter(
+      jcd =>
+        VENUE_NAMES[jcd]
+    )
+    .map(
+      jcd => ({
+        jcd,
+        name:
+          VENUE_NAMES[jcd]
+      })
+    );
 }
 
 /* =========================
@@ -247,16 +344,20 @@ function parseRaceDeadlines(html) {
   let match;
 
   while (
-    (match = textRegex.exec(text))
+    (match =
+      textRegex.exec(text))
       !== null
   ) {
     const rno =
       Number(match[1]);
 
     const time =
-      match[2].padStart(5, "0");
+      match[2]
+        .padStart(5, "0");
 
-    if (!deadlines.has(rno)) {
+    if (
+      !deadlines.has(rno)
+    ) {
       deadlines.set(
         rno,
         time
@@ -264,16 +365,22 @@ function parseRaceDeadlines(html) {
     }
   }
 
-  if (deadlines.size < 12) {
+  if (
+    deadlines.size < 12
+  ) {
     const rows = [
       ...html.matchAll(
         /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
       )
     ];
 
-    for (const rowMatch of rows) {
+    for (
+      const rowMatch of rows
+    ) {
       const rowText =
-        stripHtml(rowMatch[1]);
+        stripHtml(
+          rowMatch[1]
+        );
 
       const row =
         rowText.match(
@@ -288,9 +395,12 @@ function parseRaceDeadlines(html) {
         Number(row[1]);
 
       const time =
-        row[2].padStart(5, "0");
+        row[2]
+          .padStart(5, "0");
 
-      if (!deadlines.has(rno)) {
+      if (
+        !deadlines.has(rno)
+      ) {
         deadlines.set(
           rno,
           time
@@ -319,7 +429,9 @@ async function venueData(
     stripHtml(html);
 
   const deadlines =
-    parseRaceDeadlines(html);
+    parseRaceDeadlines(
+      html
+    );
 
   const races = [];
 
@@ -336,17 +448,22 @@ async function venueData(
 
     if (
       re.test(text) ||
-      html.includes(`rno=${rno}`)
+      html.includes(
+        `rno=${rno}`
+      )
     ) {
       const deadline =
-        deadlines.get(rno) ||
-        null;
+        deadlines.get(rno)
+        || null;
 
       races.push({
         rno,
+
         status:
           "出走情報あり",
+
         deadline,
+
         deadlineJST:
           deadline
             ? deadlineIsoJST(
@@ -361,9 +478,11 @@ async function venueData(
   return {
     hd,
     jcd,
+
     venue:
       VENUE_NAMES[jcd] ||
       jcd,
+
     races
   };
 }
@@ -413,8 +532,10 @@ function parseRacers(html) {
   let match;
 
   while (
-    (match = regex.exec(text))
-      !== null &&
+    (match =
+      regex.exec(text))
+      !== null
+    &&
     racers.length < 6
   ) {
     racers.push({
@@ -429,69 +550,106 @@ function parseRacers(html) {
 
       name:
         match[3]
-          .replace(/\s+/g, " ")
+          .replace(
+            /\s+/g,
+            " "
+          )
           .trim(),
 
       branchOrigin:
         match[4],
 
       age:
-        value(match[5]),
+        value(
+          match[5]
+        ),
 
       weight:
-        value(match[6]),
+        value(
+          match[6]
+        ),
 
       fCount:
-        value(match[7]),
+        value(
+          match[7]
+        ),
 
       lCount:
-        value(match[8]),
+        value(
+          match[8]
+        ),
 
       avgST:
-        value(match[9]),
+        value(
+          match[9]
+        ),
 
       national: {
         winRate:
-          value(match[10]),
+          value(
+            match[10]
+          ),
 
         secondRate:
-          value(match[11]),
+          value(
+            match[11]
+          ),
 
         thirdRate:
-          value(match[12])
+          value(
+            match[12]
+          )
       },
 
       local: {
         winRate:
-          value(match[13]),
+          value(
+            match[13]
+          ),
 
         secondRate:
-          value(match[14]),
+          value(
+            match[14]
+          ),
 
         thirdRate:
-          value(match[15])
+          value(
+            match[15]
+          )
       },
 
       motor: {
         number:
-          value(match[16]),
+          value(
+            match[16]
+          ),
 
         secondRate:
-          value(match[17]),
+          value(
+            match[17]
+          ),
 
         thirdRate:
-          value(match[18])
+          value(
+            match[18]
+          )
       },
 
       boat: {
         number:
-          value(match[19]),
+          value(
+            match[19]
+          ),
 
         secondRate:
-          value(match[20]),
+          value(
+            match[20]
+          ),
 
         thirdRate:
-          value(match[21])
+          value(
+            match[21]
+          )
       }
     });
   }
@@ -521,7 +679,9 @@ async function raceData(
       Number(rno),
 
     racers:
-      parseRacers(html)
+      parseRacers(
+        html
+      )
   };
 }
 
@@ -541,12 +701,16 @@ function parseBeforeInfo(html) {
   let match;
 
   while (
-    (match = racerRegex.exec(text))
-      !== null &&
+    (match =
+      racerRegex.exec(text))
+      !== null
+    &&
     racers.length < 6
   ) {
     const lane =
-      Number(match[1]);
+      Number(
+        match[1]
+      );
 
     if (
       !racers.some(
@@ -559,17 +723,26 @@ function parseBeforeInfo(html) {
 
         name:
           match[2]
-            .replace(/\s+/g, " ")
+            .replace(
+              /\s+/g,
+              " "
+            )
             .trim(),
 
         weight:
-          value(match[3]),
+          value(
+            match[3]
+          ),
 
         exhibitionTime:
-          value(match[4]),
+          value(
+            match[4]
+          ),
 
         tilt:
-          value(match[5]),
+          value(
+            match[5]
+          ),
 
         course:
           null,
@@ -592,7 +765,9 @@ function parseBeforeInfo(html) {
 
   let startText = "";
 
-  if (startIndex >= 0) {
+  if (
+    startIndex >= 0
+  ) {
     startText =
       weatherIndex > startIndex
         ? text.slice(
@@ -612,12 +787,15 @@ function parseBeforeInfo(html) {
   while (
     (match =
       startRegex.exec(startText))
-      !== null &&
+      !== null
+    &&
     starts.length < 6
   ) {
     starts.push({
       course:
-        Number(match[1]),
+        Number(
+          match[1]
+        ),
 
       exhibitionST:
         Number(
@@ -667,22 +845,30 @@ function parseBeforeInfo(html) {
     weather: {
       temperature:
         temp
-          ? Number(temp[1])
+          ? Number(
+              temp[1]
+            )
           : null,
 
       windSpeed:
         wind
-          ? Number(wind[1])
+          ? Number(
+              wind[1]
+            )
           : null,
 
       waterTemperature:
         water
-          ? Number(water[1])
+          ? Number(
+              water[1]
+            )
           : null,
 
       waveHeight:
         wave
-          ? Number(wave[1])
+          ? Number(
+              wave[1]
+            )
           : null
     }
   };
@@ -709,7 +895,9 @@ async function beforeData(
     rno:
       Number(rno),
 
-    ...parseBeforeInfo(html)
+    ...parseBeforeInfo(
+      html
+    )
   };
 }
 
@@ -719,11 +907,16 @@ async function beforeData(
 
 function cellText(html) {
   return stripHtml(html)
-    .replace(/倍$/g, "")
+    .replace(
+      /倍$/g,
+      ""
+    )
     .trim();
 }
 
-function expandTable(tableHtml) {
+function expandTable(
+  tableHtml
+) {
   const rowMatches = [
     ...tableHtml.matchAll(
       /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
@@ -747,7 +940,9 @@ function expandTable(tableHtml) {
     let col = 0;
 
     function usePending() {
-      while (pending[col]) {
+      while (
+        pending[col]
+      ) {
         row[col] =
           pending[col].value;
 
@@ -812,7 +1007,9 @@ function expandTable(tableHtml) {
         row[col] =
           text;
 
-        if (rowspan > 1) {
+        if (
+          rowspan > 1
+        ) {
           pending[col] = {
             value:
               text,
@@ -828,7 +1025,9 @@ function expandTable(tableHtml) {
 
     usePending();
 
-    grid.push(row);
+    grid.push(
+      row
+    );
   }
 
   return grid;
@@ -844,7 +1043,10 @@ function isBoatNumber(v) {
 function parseOdd(v) {
   const text =
     String(v || "")
-      .replace(/,/g, "")
+      .replace(
+        /,/g,
+        ""
+      )
       .trim();
 
   if (
@@ -896,26 +1098,38 @@ function parseOdds(html) {
           row[base];
 
         const third =
-          row[base + 1];
+          row[
+            base + 1
+          ];
 
         const odd =
           parseOdd(
-            row[base + 2]
+            row[
+              base + 2
+            ]
           );
 
         if (
-          !isBoatNumber(second) ||
-          !isBoatNumber(third) ||
+          !isBoatNumber(
+            second
+          ) ||
+          !isBoatNumber(
+            third
+          ) ||
           odd === null
         ) {
           continue;
         }
 
         const secondNum =
-          Number(second);
+          Number(
+            second
+          );
 
         const thirdNum =
-          Number(third);
+          Number(
+            third
+          );
 
         if (
           first === secondNum ||
@@ -933,10 +1147,13 @@ function parseOdds(html) {
           {
             combination,
             first,
+
             second:
               secondNum,
+
             third:
               thirdNum,
+
             odds:
               odd
           }
@@ -961,7 +1178,9 @@ async function oddsData(
     );
 
   const odds =
-    parseOdds(html);
+    parseOdds(
+      html
+    );
 
   return {
     hd,
@@ -994,10 +1213,21 @@ function parsePayout(text) {
   }
 
   const cleaned =
-    decodeHtml(text)
-      .replace(/[¥￥円]/g, "")
-      .replace(/,/g, "")
-      .replace(/\s+/g, "")
+    decodeHtml(
+      text
+    )
+      .replace(
+        /[¥￥円]/g,
+        ""
+      )
+      .replace(
+        /,/g,
+        ""
+      )
+      .replace(
+        /\s+/g,
+        ""
+      )
       .trim();
 
   const match =
@@ -1010,22 +1240,24 @@ function parsePayout(text) {
   }
 
   const n =
-    Number(match[1]);
+    Number(
+      match[1]
+    );
 
   return Number.isFinite(n)
     ? n
     : null;
 }
 
-function normalizeCombination(
-  text
-) {
+function normalizeCombination(text) {
   if (!text) {
     return null;
   }
 
   const match =
-    stripHtml(text)
+    stripHtml(
+      text
+    )
       .match(
         /([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])/
       );
@@ -1041,9 +1273,7 @@ function normalizeCombination(
   );
 }
 
-function parseTrifectaResult(
-  html
-) {
+function parseTrifectaResult(html) {
   const rows = [
     ...html.matchAll(
       /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
@@ -1066,7 +1296,9 @@ function parseTrifectaResult(
       )
       .filter(Boolean);
 
-    if (!cells.length) {
+    if (
+      !cells.length
+    ) {
       continue;
     }
 
@@ -1086,7 +1318,8 @@ function parseTrifectaResult(
         rowText
       );
 
-    let payout = null;
+    let payout =
+      null;
 
     if (combination) {
       const comboPosition =
@@ -1103,10 +1336,11 @@ function parseTrifectaResult(
           : rowText;
 
       const yenMatch =
-        decodeHtml(afterCombo)
-          .match(
-            /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
-          );
+        decodeHtml(
+          afterCombo
+        ).match(
+          /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
+        );
 
       if (yenMatch) {
         payout =
@@ -1156,14 +1390,19 @@ function parseTrifectaResult(
   }
 
   return {
-    combination: null,
-    payout: null
+    combination:
+      null,
+
+    payout:
+      null
   };
 }
 
 function parseOrder(html) {
   const text =
-    stripHtml(html);
+    stripHtml(
+      html
+    );
 
   const startInfoIndex =
     text.indexOf(
@@ -1197,19 +1436,25 @@ function parseOrder(html) {
 
   if (first) {
     order.push(
-      Number(first[1])
+      Number(
+        first[1]
+      )
     );
   }
 
   if (second) {
     order.push(
-      Number(second[1])
+      Number(
+        second[1]
+      )
     );
   }
 
   if (third) {
     order.push(
-      Number(third[1])
+      Number(
+        third[1]
+      )
     );
   }
 
@@ -1218,7 +1463,9 @@ function parseOrder(html) {
 
 function parseResult(html) {
   const text =
-    stripHtml(html);
+    stripHtml(
+      html
+    );
 
   const trifecta =
     parseTrifectaResult(
@@ -1300,7 +1547,9 @@ async function resultData(
     rno:
       Number(rno),
 
-    ...parseResult(html)
+    ...parseResult(
+      html
+    )
   };
 }
 
@@ -1323,13 +1572,20 @@ async function savePrediction(
     String(
       body.jcd ||
       ""
-    ).padStart(2, "0");
+    ).padStart(
+      2,
+      "0"
+    );
 
   const rno =
-    Number(body.rno);
+    Number(
+      body.rno
+    );
 
   if (
-    !/^\d{8}$/.test(raceDate)
+    !/^\d{8}$/.test(
+      raceDate
+    )
   ) {
     throw new Error(
       "race_date または hd が必要です"
@@ -1337,7 +1593,9 @@ async function savePrediction(
   }
 
   if (
-    !/^\d{2}$/.test(jcd)
+    !/^\d{2}$/.test(
+      jcd
+    )
   ) {
     throw new Error(
       "jcd が必要です"
@@ -1345,7 +1603,9 @@ async function savePrediction(
   }
 
   if (
-    !Number.isInteger(rno) ||
+    !Number.isInteger(
+      rno
+    ) ||
     rno < 1 ||
     rno > 12
   ) {
@@ -1435,26 +1695,43 @@ async function savePrediction(
       jcd,
       venue,
       rno,
-      body.deadline || null,
+
+      body.deadline ||
+      null,
+
       body.deadline_jst ||
-        body.deadlineJST ||
-        null,
+      body.deadlineJST ||
+      null,
+
       analyzedAt,
-      body.confidence || null,
-      body.decision || null,
-      Number.isFinite(stableScore)
+
+      body.confidence ||
+      null,
+
+      body.decision ||
+      null,
+
+      Number.isFinite(
+        stableScore
+      )
         ? stableScore
         : null,
-      body.strategy || null,
+
+      body.strategy ||
+      null,
+
       toJsonText(
         body.prediction_json ||
         body.prediction ||
         body.snapshot
       ),
+
       body.note_title ||
-        null,
+      null,
+
       body.note_body ||
-        null,
+      null,
+
       posted
     )
     .run();
@@ -1487,13 +1764,20 @@ async function saveLearningRace(
     String(
       body.jcd ||
       ""
-    ).padStart(2, "0");
+    ).padStart(
+      2,
+      "0"
+    );
 
   const rno =
-    Number(body.rno);
+    Number(
+      body.rno
+    );
 
   if (
-    !/^\d{8}$/.test(raceDate)
+    !/^\d{8}$/.test(
+      raceDate
+    )
   ) {
     throw new Error(
       "race_date または hd が必要です"
@@ -1501,7 +1785,9 @@ async function saveLearningRace(
   }
 
   if (
-    !/^\d{2}$/.test(jcd)
+    !/^\d{2}$/.test(
+      jcd
+    )
   ) {
     throw new Error(
       "jcd が必要です"
@@ -1509,7 +1795,9 @@ async function saveLearningRace(
   }
 
   if (
-    !Number.isInteger(rno) ||
+    !Number.isInteger(
+      rno
+    ) ||
     rno < 1 ||
     rno > 12
   ) {
@@ -1581,26 +1869,31 @@ async function saveLearningRace(
       jcd,
       venue,
       rno,
+
       toJsonText(
         body.race_data_json ||
         body.raceData ||
         body.race
       ),
+
       toJsonText(
         body.before_data_json ||
         body.beforeData ||
         body.before
       ),
+
       toJsonText(
         body.odds_data_json ||
         body.oddsData ||
         body.odds
       ),
+
       toJsonText(
         body.result_json ||
         body.resultData ||
         body.result
       ),
+
       finished,
       historicalImport
     )
@@ -1823,14 +2116,26 @@ export default {
       ) {
         return json({
           ok: true,
+
           version:
             WORKER_VERSION,
+
           deadlineSupport:
             true,
+
           d1Support:
             true,
+
           d1WriteSupport:
-            true
+            true,
+
+          privateApi:
+            true,
+
+          writeAuthConfigured:
+            Boolean(
+              env.D1_WRITE_TOKEN
+            )
         });
       }
 
@@ -1864,16 +2169,25 @@ export default {
 
         return json({
           ok: true,
+
           database:
             "usa-lab-ai",
+
           connected:
             true,
+
+          authConfigured:
+            Boolean(
+              env.D1_WRITE_TOKEN
+            ),
+
           result
         });
       }
 
       /* =====================
          D1 COUNTS
+         件数だけなので公開OK
       ===================== */
 
       if (
@@ -1882,6 +2196,7 @@ export default {
       ) {
         return json({
           ok: true,
+
           ...(
             await storageStats(
               env
@@ -1892,98 +2207,146 @@ export default {
 
       /* =====================
          PREDICTIONS
+         認証必須
       ===================== */
 
       if (
         url.pathname ===
-        "/api/predictions" &&
-        request.method === "GET"
+        "/api/predictions"
       ) {
-        const limit =
-          clampLimit(
-            url.searchParams.get(
-              "limit"
-            )
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
           );
 
-        return json({
-          ok: true,
-          predictions:
-            await listPredictions(
+        if (authError) {
+          return authError;
+        }
+
+        if (
+          request.method ===
+          "GET"
+        ) {
+          const limit =
+            clampLimit(
+              url.searchParams.get(
+                "limit"
+              )
+            );
+
+          return json({
+            ok: true,
+
+            predictions:
+              await listPredictions(
+                env,
+                limit
+              )
+          });
+        }
+
+        if (
+          request.method ===
+          "POST"
+        ) {
+          const body =
+            await readBody(
+              request
+            );
+
+          const result =
+            await savePrediction(
               env,
-              limit
-            )
-        });
-      }
+              body
+            );
 
-      if (
-        url.pathname ===
-        "/api/predictions" &&
-        request.method === "POST"
-      ) {
-        const body =
-          await readBody(
-            request
-          );
+          return json({
+            ok: true,
+            ...result
+          });
+        }
 
-        const result =
-          await savePrediction(
-            env,
-            body
-          );
-
-        return json({
-          ok: true,
-          ...result
-        });
+        return json(
+          {
+            ok: false,
+            error:
+              "Method Not Allowed"
+          },
+          405
+        );
       }
 
       /* =====================
          LEARNING
+         認証必須
       ===================== */
 
       if (
         url.pathname ===
-        "/api/learning" &&
-        request.method === "GET"
+        "/api/learning"
       ) {
-        const limit =
-          clampLimit(
-            url.searchParams.get(
-              "limit"
-            )
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
           );
 
-        return json({
-          ok: true,
-          learning:
-            await listLearning(
+        if (authError) {
+          return authError;
+        }
+
+        if (
+          request.method ===
+          "GET"
+        ) {
+          const limit =
+            clampLimit(
+              url.searchParams.get(
+                "limit"
+              )
+            );
+
+          return json({
+            ok: true,
+
+            learning:
+              await listLearning(
+                env,
+                limit
+              )
+          });
+        }
+
+        if (
+          request.method ===
+          "POST"
+        ) {
+          const body =
+            await readBody(
+              request
+            );
+
+          const result =
+            await saveLearningRace(
               env,
-              limit
-            )
-        });
-      }
+              body
+            );
 
-      if (
-        url.pathname ===
-        "/api/learning" &&
-        request.method === "POST"
-      ) {
-        const body =
-          await readBody(
-            request
-          );
+          return json({
+            ok: true,
+            ...result
+          });
+        }
 
-        const result =
-          await saveLearningRace(
-            env,
-            body
-          );
-
-        return json({
-          ok: true,
-          ...result
-        });
+        return json(
+          {
+            ok: false,
+            error:
+              "Method Not Allowed"
+          },
+          405
+        );
       }
 
       /* =====================
@@ -2003,6 +2366,7 @@ export default {
         return json({
           ok: true,
           hd,
+
           venues:
             await venues(
               hd
@@ -2047,6 +2411,7 @@ export default {
 
         return json({
           ok: true,
+
           ...(
             await venueData(
               hd,
@@ -2085,6 +2450,7 @@ export default {
 
         return json({
           ok: true,
+
           ...(
             await raceData(
               hd,
@@ -2124,6 +2490,7 @@ export default {
 
         return json({
           ok: true,
+
           ...(
             await beforeData(
               hd,
@@ -2163,6 +2530,7 @@ export default {
 
         return json({
           ok: true,
+
           ...(
             await oddsData(
               hd,
@@ -2202,6 +2570,7 @@ export default {
 
         return json({
           ok: true,
+
           ...(
             await resultData(
               hd,
@@ -2220,6 +2589,7 @@ export default {
       return json(
         {
           ok: false,
+
           error:
             error?.message ||
             String(error)
