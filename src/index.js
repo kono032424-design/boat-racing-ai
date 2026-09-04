@@ -7276,7 +7276,23 @@ export default {
             )
         },
         502
-      );
-    }
+      );    }
+  },
+
+  async scheduled(
+    event,
+    env,
+    ctx
+  ) {
+    ctx.waitUntil(
+      runAutoWindow(
+        env,
+        {
+          hd:
+            todayJST()
+        }
+      )
+    );
   }
 };
+       
