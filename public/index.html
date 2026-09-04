@@ -4653,5 +4653,134 @@ renderHistory();
 
 })();
 </script>
+  <script>
+(function () {
+  const wrap = document.querySelector(".wrap");
+  if (!wrap) return;
+
+  const box = document.createElement("div");
+
+  box.style.cssText = `
+    background:#1e293b;
+    border:1px solid #8b5cf6;
+    border-radius:16px;
+    padding:14px;
+    margin:14px 0;
+  `;
+
+  box.innerHTML = `
+    <div style="font-size:22px;font-weight:800;margin-bottom:10px;">
+      🤖 自動分析テスト
+    </div>
+
+    <div style="opacity:.8;margin-bottom:12px;">
+      締切25〜35分前のレース抽出をテストします。
+      D1への保存はしません。
+    </div>
+
+    <button
+      id="autoScanTestBtn"
+      style="
+        width:100%;
+        padding:14px;
+        border:0;
+        border-radius:12px;
+        font-size:18px;
+        font-weight:800;
+        background:#7c3aed;
+        color:white;
+      "
+    >
+      🔎 自動抽出をテスト
+    </button>
+
+    <div
+      id="autoScanTestResult"
+      style="
+        margin-top:12px;
+        white-space:pre-wrap;
+        line-height:1.7;
+      "
+    ></div>
+  `;
+
+  wrap.appendChild(box);
+
+  const result =
+    document.getElementById(
+      "autoScanTestResult"
+    );
+
+  document.getElementById(
+    "autoScanTestBtn"
+  ).onclick =
+    async () => {
+
+      const token =
+        localStorage.getItem(
+          "usa_lab_d1_token"
+        );
+
+      if (!token) {
+        result.textContent =
+          "❌ D1同期キーがありません";
+        return;
+      }
+
+      result.textContent =
+        "🔎 自動抽出テスト中…";
+
+      try {
+        const params =
+          new URLSearchParams({
+            hd: "20260904",
+            at: "2026-09-04T15:53:00+09:00"
+          });
+
+        const response =
+          await fetch(
+            `/api/auto-scan?${params}`,
+            {
+              headers: {
+                authorization:
+                  `Bearer ${token}`
+              },
+              cache: "no-store"
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(
+            data.error ||
+            "自動抽出に失敗しました"
+          );
+        }
+
+        const races =
+          (data.targets || [])
+            .map(
+              race =>
+                `${race.venue} ${race.rno}R` +
+                `｜締切 ${race.deadline}` +
+                `｜あと ${race.minutesUntil}分`
+            )
+            .join("\n");
+
+        result.textContent =
+          `✅ 自動抽出成功\n` +
+          `開催場：${data.venues}場\n` +
+          `対象：${data.count}R\n\n` +
+          (races || "対象レースなし");
+
+      } catch (error) {
+        result.textContent =
+          `❌ ${error.message}`;
+      }
+    };
+})();
+</script>
 </body>
 </html>
