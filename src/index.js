@@ -1,5 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
-const WORKER_VERSION = "6.3.3";
+const WORKER_VERSION = "6.4.0";
+const AI_VERSION = "6.6.12";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -11,17 +12,10 @@ function json(data, status = 200) {
   });
 }
 
-/* =========================
-   PRIVATE API 認証
-========================= */
-
 function getBearerToken(request) {
-  const auth =
-    request.headers.get("authorization") || "";
+  const auth = request.headers.get("authorization") || "";
 
-  if (
-    auth.toLowerCase().startsWith("bearer ")
-  ) {
+  if (auth.toLowerCase().startsWith("bearer ")) {
     return auth.slice(7).trim();
   }
 
@@ -30,31 +24,19 @@ function getBearerToken(request) {
 
 function checkPrivateAccess(request, env) {
   if (!env.D1_WRITE_TOKEN) {
-    return json(
-      {
-        ok: false,
-        error:
-          "D1_WRITE_TOKEN がCloudflareに設定されていません"
-      },
-      503
-    );
+    return json({
+      ok: false,
+      error: "D1_WRITE_TOKEN が設定されていません"
+    }, 503);
   }
 
-  const token =
-    getBearerToken(request);
+  const token = getBearerToken(request);
 
-  if (
-    !token ||
-    token !== env.D1_WRITE_TOKEN
-  ) {
-    return json(
-      {
-        ok: false,
-        error:
-          "認証に失敗しました"
-      },
-      401
-    );
+  if (!token || token !== env.D1_WRITE_TOKEN) {
+    return json({
+      ok: false,
+      error: "認証に失敗しました"
+    }, 401);
   }
 
   return null;
@@ -84,18 +66,13 @@ function stripHtml(html = "") {
 }
 
 async function officialFetch(path) {
-  const response =
-    await fetch(
-      OFFICIAL + path,
-      {
-        headers: {
-          "user-agent":
-            `Mozilla/5.0 (compatible; BoatRacingAI/${WORKER_VERSION})`,
-          "accept":
-            "text/html,application/xhtml+xml"
-        }
-      }
-    );
+  const response = await fetch(OFFICIAL + path, {
+    headers: {
+      "user-agent":
+        `Mozilla/5.0 (compatible; BoatRacingAI/${WORKER_VERSION})`,
+      "accept": "text/html,application/xhtml+xml"
+    }
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -103,81 +80,52 @@ async function officialFetch(path) {
     );
   }
 
-  return await response.text();
+  return response.text();
 }
 
 function todayJST() {
-  return new Intl.DateTimeFormat(
-    "ja-JP",
-    {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }
-  )
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  })
     .format(new Date())
     .replaceAll("/", "");
 }
 
 function nowJST() {
-  return (
-    new Intl.DateTimeFormat(
-      "sv-SE",
-      {
-        timeZone: "Asia/Tokyo",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false
-      }
-    )
-      .format(new Date())
-      .replace(" ", "T")
-    +
-    "+09:00"
-  );
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  })
+    .format(new Date())
+    .replace(" ", "T") + "+09:00";
 }
 
-function deadlineIsoJST(
-  hd,
-  time
-) {
-  if (
-    !/^\d{8}$/.test(
-      String(hd || "")
-    )
-  ) {
+function deadlineIsoJST(hd, time) {
+  if (!/^\d{8}$/.test(String(hd || ""))) {
     return null;
   }
 
-  if (
-    !/^\d{1,2}:\d{2}$/.test(
-      String(time || "")
-    )
-  ) {
+  if (!/^\d{1,2}:\d{2}$/.test(String(time || ""))) {
     return null;
   }
 
-  const yyyy =
-    hd.slice(0, 4);
-
-  const mm =
-    hd.slice(4, 6);
-
-  const dd =
-    hd.slice(6, 8);
-
-  const [h, m] =
-    time.split(":");
+  const yyyy = hd.slice(0, 4);
+  const mm = hd.slice(4, 6);
+  const dd = hd.slice(6, 8);
+  const [h, m] = time.split(":");
 
   return (
     `${yyyy}-${mm}-${dd}` +
-    `T${String(h).padStart(2, "0")}` +
-    `:${m}:00+09:00`
+    `T${String(h).padStart(2, "0")}:${m}:00+09:00`
   );
 }
 
@@ -226,55 +174,76 @@ function value(v) {
     return null;
   }
 
-  const n =
-    Number(v);
+  const n = Number(v);
 
-  return Number.isFinite(n)
-    ? n
-    : null;
+  return Number.isFinite(n) ? n : null;
 }
 
-function clampLimit(
-  v,
-  fallback = 50
-) {
-  const n =
-    Number(v);
-
+function safeNumber(v) {
   if (
-    !Number.isInteger(n)
-  ) {
-    return fallback;
-  }
-
-  return Math.min(
-    Math.max(n, 1),
-    200
-  );
-}
-
-function toJsonText(value) {
-  if (
-    value === undefined ||
-    value === null
+    v === null ||
+    v === undefined ||
+    v === ""
   ) {
     return null;
   }
 
-  if (
-    typeof value === "string"
-  ) {
-    return value;
-  }
+  const n = Number(v);
 
-  return JSON.stringify(value);
+  return Number.isFinite(n) ? n : null;
 }
 
-function makeRaceKey(
-  raceDate,
-  jcd,
-  rno
-) {
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function norm(v, low, high) {
+  return high <= low
+    ? .5
+    : clamp((v - low) / (high - low), 0, 1);
+}
+
+function clampLimit(v, fallback = 50) {
+  const n = Number(v);
+
+  if (!Number.isInteger(n)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(n, 1), 200);
+}
+
+function toJsonText(v) {
+  if (v === undefined || v === null) {
+    return null;
+  }
+
+  return typeof v === "string"
+    ? v
+    : JSON.stringify(v);
+}
+
+function parseJsonSafe(text, fallback = null) {
+  if (
+    text === null ||
+    text === undefined ||
+    text === ""
+  ) {
+    return fallback;
+  }
+
+  if (typeof text !== "string") {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
+
+function makeRaceKey(raceDate, jcd, rno) {
   return (
     `${String(raceDate)}-` +
     `${String(jcd).padStart(2, "0")}-` +
@@ -297,34 +266,20 @@ async function readBody(request) {
 ========================= */
 
 async function venues(hd) {
-  const html =
-    await officialFetch(
-      `/owpc/pc/race/index?hd=${hd}`
-    );
-
-  const found = [
-    ...html.matchAll(
-      /[?&]jcd=(\d{2})/g
-    )
-  ].map(
-    m => m[1]
+  const html = await officialFetch(
+    `/owpc/pc/race/index?hd=${hd}`
   );
 
-  const ids =
-    [...new Set(found)];
+  const found = [
+    ...html.matchAll(/[?&]jcd=(\d{2})/g)
+  ].map(m => m[1]);
 
-  return ids
-    .filter(
-      jcd =>
-        VENUE_NAMES[jcd]
-    )
-    .map(
-      jcd => ({
-        jcd,
-        name:
-          VENUE_NAMES[jcd]
-      })
-    );
+  return [...new Set(found)]
+    .filter(jcd => VENUE_NAMES[jcd])
+    .map(jcd => ({
+      jcd,
+      name: VENUE_NAMES[jcd]
+    }));
 }
 
 /* =========================
@@ -332,79 +287,46 @@ async function venues(hd) {
 ========================= */
 
 function parseRaceDeadlines(html) {
-  const deadlines =
-    new Map();
+  const deadlines = new Map();
+  const text = stripHtml(html);
 
-  const text =
-    stripHtml(html);
-
-  const textRegex =
+  const re =
     /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/g;
 
   let match;
 
-  while (
-    (match =
-      textRegex.exec(text))
-      !== null
-  ) {
-    const rno =
-      Number(match[1]);
+  while ((match = re.exec(text)) !== null) {
+    const rno = Number(match[1]);
+    const time = match[2].padStart(5, "0");
 
-    const time =
-      match[2]
-        .padStart(5, "0");
-
-    if (
-      !deadlines.has(rno)
-    ) {
-      deadlines.set(
-        rno,
-        time
-      );
+    if (!deadlines.has(rno)) {
+      deadlines.set(rno, time);
     }
   }
 
-  if (
-    deadlines.size < 12
-  ) {
+  if (deadlines.size < 12) {
     const rows = [
       ...html.matchAll(
         /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
       )
     ];
 
-    for (
-      const rowMatch of rows
-    ) {
-      const rowText =
-        stripHtml(
-          rowMatch[1]
-        );
+    for (const rowMatch of rows) {
+      const rowText = stripHtml(rowMatch[1]);
 
-      const row =
-        rowText.match(
-          /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/
-        );
+      const row = rowText.match(
+        /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/
+      );
 
       if (!row) {
         continue;
       }
 
-      const rno =
-        Number(row[1]);
+      const rno = Number(row[1]);
+      const time = row[2].padStart(5, "0");
 
-      const time =
-        row[2]
-          .padStart(5, "0");
-
-      if (
-        !deadlines.has(rno)
-      ) {
-        deadlines.set(
-          rno,
-          time
-        );
+      if (!deadlines.has(rno)) {
+        deadlines.set(rno, time);
       }
     }
   }
@@ -416,60 +338,35 @@ function parseRaceDeadlines(html) {
    レース一覧
 ========================= */
 
-async function venueData(
-  hd,
-  jcd
-) {
-  const html =
-    await officialFetch(
-      `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
-    );
+async function venueData(hd, jcd) {
+  const html = await officialFetch(
+    `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
+  );
 
-  const text =
-    stripHtml(html);
-
-  const deadlines =
-    parseRaceDeadlines(
-      html
-    );
-
+  const text = stripHtml(html);
+  const deadlines = parseRaceDeadlines(html);
   const races = [];
 
-  for (
-    let rno = 1;
-    rno <= 12;
-    rno++
-  ) {
-    const re =
-      new RegExp(
-        `(?:^|\\s)${rno}R(?:\\s|$)`,
-        "i"
-      );
+  for (let rno = 1; rno <= 12; rno++) {
+    const re = new RegExp(
+      `(?:^|\\s)${rno}R(?:\\s|$)`,
+      "i"
+    );
 
     if (
       re.test(text) ||
-      html.includes(
-        `rno=${rno}`
-      )
+      html.includes(`rno=${rno}`)
     ) {
       const deadline =
-        deadlines.get(rno)
-        || null;
+        deadlines.get(rno) || null;
 
       races.push({
         rno,
-
-        status:
-          "出走情報あり",
-
+        status: "出走情報あり",
         deadline,
-
         deadlineJST:
           deadline
-            ? deadlineIsoJST(
-                hd,
-                deadline
-              )
+            ? deadlineIsoJST(hd, deadline)
             : null
       });
     }
@@ -478,11 +375,8 @@ async function venueData(
   return {
     hd,
     jcd,
-
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
-
+      VENUE_NAMES[jcd] || jcd,
     races
   };
 }
@@ -492,9 +386,7 @@ async function venueData(
 ========================= */
 
 function parseRacers(html) {
-  const text =
-    stripHtml(html);
-
+  const text = stripHtml(html);
   const racers = [];
 
   const num =
@@ -524,132 +416,53 @@ function parseRacers(html) {
     num;
 
   const regex =
-    new RegExp(
-      pattern,
-      "g"
-    );
+    new RegExp(pattern, "g");
 
   let match;
 
   while (
-    (match =
-      regex.exec(text))
-      !== null
-    &&
+    (match = regex.exec(text)) !== null &&
     racers.length < 6
   ) {
     racers.push({
-      lane:
-        racers.length + 1,
-
-      registration:
-        match[1],
-
-      class:
-        match[2],
+      lane: racers.length + 1,
+      registration: match[1],
+      class: match[2],
 
       name:
         match[3]
-          .replace(
-            /\s+/g,
-            " "
-          )
+          .replace(/\s+/g, " ")
           .trim(),
 
-      branchOrigin:
-        match[4],
-
-      age:
-        value(
-          match[5]
-        ),
-
-      weight:
-        value(
-          match[6]
-        ),
-
-      fCount:
-        value(
-          match[7]
-        ),
-
-      lCount:
-        value(
-          match[8]
-        ),
-
-      avgST:
-        value(
-          match[9]
-        ),
+      branchOrigin: match[4],
+      age: value(match[5]),
+      weight: value(match[6]),
+      fCount: value(match[7]),
+      lCount: value(match[8]),
+      avgST: value(match[9]),
 
       national: {
-        winRate:
-          value(
-            match[10]
-          ),
-
-        secondRate:
-          value(
-            match[11]
-          ),
-
-        thirdRate:
-          value(
-            match[12]
-          )
+        winRate: value(match[10]),
+        secondRate: value(match[11]),
+        thirdRate: value(match[12])
       },
 
       local: {
-        winRate:
-          value(
-            match[13]
-          ),
-
-        secondRate:
-          value(
-            match[14]
-          ),
-
-        thirdRate:
-          value(
-            match[15]
-          )
+        winRate: value(match[13]),
+        secondRate: value(match[14]),
+        thirdRate: value(match[15])
       },
 
       motor: {
-        number:
-          value(
-            match[16]
-          ),
-
-        secondRate:
-          value(
-            match[17]
-          ),
-
-        thirdRate:
-          value(
-            match[18]
-          )
+        number: value(match[16]),
+        secondRate: value(match[17]),
+        thirdRate: value(match[18])
       },
 
       boat: {
-        number:
-          value(
-            match[19]
-          ),
-
-        secondRate:
-          value(
-            match[20]
-          ),
-
-        thirdRate:
-          value(
-            match[21]
-          )
+        number: value(match[19]),
+        secondRate: value(match[20]),
+        thirdRate: value(match[21])
       }
     });
   }
@@ -657,31 +470,18 @@ function parseRacers(html) {
   return racers;
 }
 
-async function raceData(
-  hd,
-  jcd,
-  rno
-) {
-  const html =
-    await officialFetch(
-      `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
-    );
+async function raceData(hd, jcd, rno) {
+  const html = await officialFetch(
+    `/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}`
+  );
 
   return {
     hd,
     jcd,
-
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
-
-    rno:
-      Number(rno),
-
-    racers:
-      parseRacers(
-        html
-      )
+      VENUE_NAMES[jcd] || jcd,
+    rno: Number(rno),
+    racers: parseRacers(html)
   };
 }
 
@@ -690,9 +490,7 @@ async function raceData(
 ========================= */
 
 function parseBeforeInfo(html) {
-  const text =
-    stripHtml(html);
-
+  const text = stripHtml(html);
   const racers = [];
 
   const racerRegex =
@@ -701,21 +499,15 @@ function parseBeforeInfo(html) {
   let match;
 
   while (
-    (match =
-      racerRegex.exec(text))
-      !== null
-    &&
+    (match = racerRegex.exec(text)) !== null &&
     racers.length < 6
   ) {
     const lane =
-      Number(
-        match[1]
-      );
+      Number(match[1]);
 
     if (
       !racers.some(
-        r =>
-          r.lane === lane
+        r => r.lane === lane
       )
     ) {
       racers.push({
@@ -723,26 +515,17 @@ function parseBeforeInfo(html) {
 
         name:
           match[2]
-            .replace(
-              /\s+/g,
-              " "
-            )
+            .replace(/\s+/g, " ")
             .trim(),
 
         weight:
-          value(
-            match[3]
-          ),
+          value(match[3]),
 
         exhibitionTime:
-          value(
-            match[4]
-          ),
+          value(match[4]),
 
         tilt:
-          value(
-            match[5]
-          ),
+          value(match[5]),
 
         course:
           null,
@@ -754,30 +537,22 @@ function parseBeforeInfo(html) {
   }
 
   const startIndex =
-    text.indexOf(
-      "スタート展示"
-    );
+    text.indexOf("スタート展示");
 
   const weatherIndex =
-    text.indexOf(
-      "水面気象情報"
-    );
+    text.indexOf("水面気象情報");
 
-  let startText = "";
-
-  if (
+  const startText =
     startIndex >= 0
-  ) {
-    startText =
-      weatherIndex > startIndex
-        ? text.slice(
-            startIndex,
-            weatherIndex
-          )
-        : text.slice(
-            startIndex
-          );
-  }
+      ? (
+          weatherIndex > startIndex
+            ? text.slice(
+                startIndex,
+                weatherIndex
+              )
+            : text.slice(startIndex)
+        )
+      : "";
 
   const startRegex =
     /(?:^|\s)([1-6])\s+\.([0-9]{2})(?=\s|$)/g;
@@ -785,17 +560,12 @@ function parseBeforeInfo(html) {
   const starts = [];
 
   while (
-    (match =
-      startRegex.exec(startText))
-      !== null
-    &&
+    (match = startRegex.exec(startText)) !== null &&
     starts.length < 6
   ) {
     starts.push({
       course:
-        Number(
-          match[1]
-        ),
+        Number(match[1]),
 
       exhibitionST:
         Number(
@@ -845,30 +615,22 @@ function parseBeforeInfo(html) {
     weather: {
       temperature:
         temp
-          ? Number(
-              temp[1]
-            )
+          ? Number(temp[1])
           : null,
 
       windSpeed:
         wind
-          ? Number(
-              wind[1]
-            )
+          ? Number(wind[1])
           : null,
 
       waterTemperature:
         water
-          ? Number(
-              water[1]
-            )
+          ? Number(water[1])
           : null,
 
       waveHeight:
         wave
-          ? Number(
-              wave[1]
-            )
+          ? Number(wave[1])
           : null
     }
   };
@@ -879,44 +641,29 @@ async function beforeData(
   jcd,
   rno
 ) {
-  const html =
-    await officialFetch(
-      `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
-    );
+  const html = await officialFetch(
+    `/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}`
+  );
 
   return {
     hd,
     jcd,
-
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
-
-    rno:
-      Number(rno),
-
-    ...parseBeforeInfo(
-      html
-    )
+      VENUE_NAMES[jcd] || jcd,
+    rno: Number(rno),
+    ...parseBeforeInfo(html)
   };
-}
-
-/* =========================
+} /* =========================
    3連単オッズ
 ========================= */
 
 function cellText(html) {
   return stripHtml(html)
-    .replace(
-      /倍$/g,
-      ""
-    )
+    .replace(/倍$/g, "")
     .trim();
 }
 
-function expandTable(
-  tableHtml
-) {
+function expandTable(tableHtml) {
   const rowMatches = [
     ...tableHtml.matchAll(
       /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
@@ -926,10 +673,7 @@ function expandTable(
   const pending = {};
   const grid = [];
 
-  for (
-    const rowMatch of
-    rowMatches
-  ) {
+  for (const rowMatch of rowMatches) {
     const cells = [
       ...rowMatch[1].matchAll(
         /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi
@@ -940,18 +684,14 @@ function expandTable(
     let col = 0;
 
     function usePending() {
-      while (
-        pending[col]
-      ) {
+      while (pending[col]) {
         row[col] =
           pending[col].value;
 
-        pending[col]
-          .remaining--;
+        pending[col].remaining--;
 
         if (
-          pending[col]
-            .remaining <= 0
+          pending[col].remaining <= 0
         ) {
           delete pending[col];
         }
@@ -962,18 +702,14 @@ function expandTable(
 
     usePending();
 
-    for (
-      const cell of cells
-    ) {
+    for (const cell of cells) {
       usePending();
 
       const attrs =
         cell[2] || "";
 
       const text =
-        cellText(
-          cell[3]
-        );
+        cellText(cell[3]);
 
       const rowspanMatch =
         attrs.match(
@@ -987,16 +723,12 @@ function expandTable(
 
       const rowspan =
         rowspanMatch
-          ? Number(
-              rowspanMatch[1]
-            )
+          ? Number(rowspanMatch[1])
           : 1;
 
       const colspan =
         colspanMatch
-          ? Number(
-              colspanMatch[1]
-            )
+          ? Number(colspanMatch[1])
           : 1;
 
       for (
@@ -1004,16 +736,11 @@ function expandTable(
         i < colspan;
         i++
       ) {
-        row[col] =
-          text;
+        row[col] = text;
 
-        if (
-          rowspan > 1
-        ) {
+        if (rowspan > 1) {
           pending[col] = {
-            value:
-              text,
-
+            value: text,
             remaining:
               rowspan - 1
           };
@@ -1025,9 +752,7 @@ function expandTable(
 
     usePending();
 
-    grid.push(
-      row
-    );
+    grid.push(row);
   }
 
   return grid;
@@ -1035,18 +760,14 @@ function expandTable(
 
 function isBoatNumber(v) {
   return /^[1-6]$/.test(
-    String(v || "")
-      .trim()
+    String(v || "").trim()
   );
 }
 
 function parseOdd(v) {
   const text =
     String(v || "")
-      .replace(
-        /,/g,
-        ""
-      )
+      .replace(/,/g, "")
       .trim();
 
   if (
@@ -1075,17 +796,11 @@ function parseOdds(html) {
   const map =
     new Map();
 
-  for (
-    const table of tables
-  ) {
+  for (const table of tables) {
     const grid =
-      expandTable(
-        table[0]
-      );
+      expandTable(table[0]);
 
-    for (
-      const row of grid
-    ) {
+    for (const row of grid) {
       for (
         let first = 1;
         first <= 6;
@@ -1098,38 +813,26 @@ function parseOdds(html) {
           row[base];
 
         const third =
-          row[
-            base + 1
-          ];
+          row[base + 1];
 
         const odd =
           parseOdd(
-            row[
-              base + 2
-            ]
+            row[base + 2]
           );
 
         if (
-          !isBoatNumber(
-            second
-          ) ||
-          !isBoatNumber(
-            third
-          ) ||
+          !isBoatNumber(second) ||
+          !isBoatNumber(third) ||
           odd === null
         ) {
           continue;
         }
 
         const secondNum =
-          Number(
-            second
-          );
+          Number(second);
 
         const thirdNum =
-          Number(
-            third
-          );
+          Number(third);
 
         if (
           first === secondNum ||
@@ -1147,13 +850,10 @@ function parseOdds(html) {
           {
             combination,
             first,
-
             second:
               secondNum,
-
             third:
               thirdNum,
-
             odds:
               odd
           }
@@ -1178,9 +878,7 @@ async function oddsData(
     );
 
   const odds =
-    parseOdds(
-      html
-    );
+    parseOdds(html);
 
   return {
     hd,
@@ -1213,21 +911,10 @@ function parsePayout(text) {
   }
 
   const cleaned =
-    decodeHtml(
-      text
-    )
-      .replace(
-        /[¥￥円]/g,
-        ""
-      )
-      .replace(
-        /,/g,
-        ""
-      )
-      .replace(
-        /\s+/g,
-        ""
-      )
+    decodeHtml(text)
+      .replace(/[¥￥円]/g, "")
+      .replace(/,/g, "")
+      .replace(/\s+/g, "")
       .trim();
 
   const match =
@@ -1240,9 +927,7 @@ function parsePayout(text) {
   }
 
   const n =
-    Number(
-      match[1]
-    );
+    Number(match[1]);
 
   return Number.isFinite(n)
     ? n
@@ -1255,9 +940,7 @@ function normalizeCombination(text) {
   }
 
   const match =
-    stripHtml(
-      text
-    )
+    stripHtml(text)
       .match(
         /([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])/
       );
@@ -1280,9 +963,7 @@ function parseTrifectaResult(html) {
     )
   ];
 
-  for (
-    const rowMatch of rows
-  ) {
+  for (const rowMatch of rows) {
     const cells = [
       ...rowMatch[1].matchAll(
         /<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi
@@ -1290,15 +971,11 @@ function parseTrifectaResult(html) {
     ]
       .map(
         cell =>
-          stripHtml(
-            cell[1]
-          )
+          stripHtml(cell[1])
       )
       .filter(Boolean);
 
-    if (
-      !cells.length
-    ) {
+    if (!cells.length) {
       continue;
     }
 
@@ -1306,9 +983,7 @@ function parseTrifectaResult(html) {
       cells.join(" ");
 
     if (
-      !rowText.includes(
-        "3連単"
-      )
+      !rowText.includes("3連単")
     ) {
       continue;
     }
@@ -1318,8 +993,7 @@ function parseTrifectaResult(html) {
         rowText
       );
 
-    let payout =
-      null;
+    let payout = null;
 
     if (combination) {
       const comboPosition =
@@ -1336,11 +1010,10 @@ function parseTrifectaResult(html) {
           : rowText;
 
       const yenMatch =
-        decodeHtml(
-          afterCombo
-        ).match(
-          /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
-        );
+        decodeHtml(afterCombo)
+          .match(
+            /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
+          );
 
       if (yenMatch) {
         payout =
@@ -1350,16 +1023,13 @@ function parseTrifectaResult(html) {
           );
       }
 
-      if (
-        payout === null
-      ) {
+      if (payout === null) {
         const comboCellIndex =
           cells.findIndex(
             cell =>
               normalizeCombination(
                 cell
-              ) ===
-              combination
+              ) === combination
           );
 
         if (
@@ -1390,19 +1060,14 @@ function parseTrifectaResult(html) {
   }
 
   return {
-    combination:
-      null,
-
-    payout:
-      null
+    combination: null,
+    payout: null
   };
 }
 
 function parseOrder(html) {
   const text =
-    stripHtml(
-      html
-    );
+    stripHtml(html);
 
   const startInfoIndex =
     text.indexOf(
@@ -1436,25 +1101,19 @@ function parseOrder(html) {
 
   if (first) {
     order.push(
-      Number(
-        first[1]
-      )
+      Number(first[1])
     );
   }
 
   if (second) {
     order.push(
-      Number(
-        second[1]
-      )
+      Number(second[1])
     );
   }
 
   if (third) {
     order.push(
-      Number(
-        third[1]
-      )
+      Number(third[1])
     );
   }
 
@@ -1463,19 +1122,13 @@ function parseOrder(html) {
 
 function parseResult(html) {
   const text =
-    stripHtml(
-      html
-    );
+    stripHtml(html);
 
   const trifecta =
-    parseTrifectaResult(
-      html
-    );
+    parseTrifectaResult(html);
 
   let order =
-    parseOrder(
-      html
-    );
+    parseOrder(html);
 
   if (
     order.length < 3 &&
@@ -1513,10 +1166,7 @@ function parseResult(html) {
 
     winningLanes:
       finished
-        ? order.slice(
-            0,
-            3
-          )
+        ? order.slice(0, 3)
         : [],
 
     method:
@@ -1547,9 +1197,7 @@ async function resultData(
     rno:
       Number(rno),
 
-    ...parseResult(
-      html
-    )
+    ...parseResult(html)
   };
 }
 
@@ -1572,15 +1220,10 @@ async function savePrediction(
     String(
       body.jcd ||
       ""
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   const rno =
-    Number(
-      body.rno
-    );
+    Number(body.rno);
 
   if (
     !/^\d{8}$/.test(
@@ -1593,9 +1236,7 @@ async function savePrediction(
   }
 
   if (
-    !/^\d{2}$/.test(
-      jcd
-    )
+    !/^\d{2}$/.test(jcd)
   ) {
     throw new Error(
       "jcd が必要です"
@@ -1603,9 +1244,7 @@ async function savePrediction(
   }
 
   if (
-    !Number.isInteger(
-      rno
-    ) ||
+    !Number.isInteger(rno) ||
     rno < 1 ||
     rno > 12
   ) {
@@ -1672,22 +1311,22 @@ async function savePrediction(
       )
       ON CONFLICT(race_key)
       DO UPDATE SET
-        race_date = excluded.race_date,
-        jcd = excluded.jcd,
-        venue = excluded.venue,
-        rno = excluded.rno,
-        deadline = excluded.deadline,
-        deadline_jst = excluded.deadline_jst,
-        analyzed_at = excluded.analyzed_at,
-        confidence = excluded.confidence,
-        decision = excluded.decision,
-        stable_score = excluded.stable_score,
-        strategy = excluded.strategy,
-        prediction_json = excluded.prediction_json,
-        note_title = excluded.note_title,
-        note_body = excluded.note_body,
-        posted = excluded.posted,
-        updated_at = CURRENT_TIMESTAMP
+        race_date=excluded.race_date,
+        jcd=excluded.jcd,
+        venue=excluded.venue,
+        rno=excluded.rno,
+        deadline=excluded.deadline,
+        deadline_jst=excluded.deadline_jst,
+        analyzed_at=excluded.analyzed_at,
+        confidence=excluded.confidence,
+        decision=excluded.decision,
+        stable_score=excluded.stable_score,
+        strategy=excluded.strategy,
+        prediction_json=excluded.prediction_json,
+        note_title=excluded.note_title,
+        note_body=excluded.note_body,
+        posted=excluded.posted,
+        updated_at=CURRENT_TIMESTAMP
     `)
     .bind(
       raceKey,
@@ -1764,15 +1403,10 @@ async function saveLearningRace(
     String(
       body.jcd ||
       ""
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   const rno =
-    Number(
-      body.rno
-    );
+    Number(body.rno);
 
   if (
     !/^\d{8}$/.test(
@@ -1785,9 +1419,7 @@ async function saveLearningRace(
   }
 
   if (
-    !/^\d{2}$/.test(
-      jcd
-    )
+    !/^\d{2}$/.test(jcd)
   ) {
     throw new Error(
       "jcd が必要です"
@@ -1795,9 +1427,7 @@ async function saveLearningRace(
   }
 
   if (
-    !Number.isInteger(
-      rno
-    ) ||
+    !Number.isInteger(rno) ||
     rno < 1 ||
     rno > 12
   ) {
@@ -1851,17 +1481,17 @@ async function saveLearningRace(
       )
       ON CONFLICT(race_key)
       DO UPDATE SET
-        race_date = excluded.race_date,
-        jcd = excluded.jcd,
-        venue = excluded.venue,
-        rno = excluded.rno,
-        race_data_json = excluded.race_data_json,
-        before_data_json = excluded.before_data_json,
-        odds_data_json = excluded.odds_data_json,
-        result_json = excluded.result_json,
-        finished = excluded.finished,
-        historical_import = excluded.historical_import,
-        updated_at = CURRENT_TIMESTAMP
+        race_date=excluded.race_date,
+        jcd=excluded.jcd,
+        venue=excluded.venue,
+        rno=excluded.rno,
+        race_data_json=excluded.race_data_json,
+        before_data_json=excluded.before_data_json,
+        odds_data_json=excluded.odds_data_json,
+        result_json=excluded.result_json,
+        finished=excluded.finished,
+        historical_import=excluded.historical_import,
+        updated_at=CURRENT_TIMESTAMP
     `)
     .bind(
       raceKey,
@@ -1929,11 +1559,9 @@ async function storageStats(env) {
 
   const finished =
     await env.DB
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM learning_races
-        WHERE finished = 1
-      `)
+      .prepare(
+        "SELECT COUNT(*) AS count FROM learning_races WHERE finished=1"
+      )
       .first();
 
   return {
@@ -1982,7 +1610,7 @@ async function listPredictions(
           created_at,
           updated_at
         FROM predictions
-        ORDER BY race_date DESC, rno DESC
+        ORDER BY race_date DESC,rno DESC
         LIMIT ?
       `)
       .bind(limit)
@@ -2012,7 +1640,7 @@ async function listLearning(
           created_at,
           updated_at
         FROM learning_races
-        ORDER BY race_date DESC, rno DESC
+        ORDER BY race_date DESC,rno DESC
         LIMIT ?
       `)
       .bind(limit)
@@ -2022,10 +1650,2637 @@ async function listLearning(
     result.results ||
     []
   );
+} /* =========================
+   V6.6.12 AI
+========================= */
+
+const COMPONENT_NAMES = {
+  lane:"枠・コース基本力",
+  class:"級別",
+  national:"全国勝率",
+  local:"当地勝率",
+  st:"平均ST",
+  motor:"モーター",
+  exhibition:"展示タイム",
+  exhibitionST:"展示ST",
+  course:"展示コース"
+};
+
+const ROLE_WEIGHTS = {
+  first:{
+    lane:1.25,
+    class:.90,
+    national:1.15,
+    local:.75,
+    st:1.25,
+    motor:.70,
+    exhibition:.80,
+    exhibitionST:.90,
+    course:1.15
+  },
+
+  second:{
+    lane:.75,
+    class:.85,
+    national:.90,
+    local:1.05,
+    st:.85,
+    motor:1.15,
+    exhibition:1.15,
+    exhibitionST:1,
+    course:.75
+  },
+
+  third:{
+    lane:.38,
+    class:.65,
+    national:.78,
+    local:1.08,
+    st:.68,
+    motor:1.32,
+    exhibition:1.22,
+    exhibitionST:.98,
+    course:.46
+  }
+};
+
+function mergeBefore(
+  racers,
+  beforeData
+) {
+  return racers.map(
+    racer => {
+      const live =
+        beforeData?.racers
+          ?.find(
+            x =>
+              Number(x.lane) ===
+              Number(racer.lane)
+          );
+
+      return {
+        ...racer,
+
+        before:{
+          course:
+            live?.course ?? null,
+
+          exhibitionTime:
+            live?.exhibitionTime ?? null,
+
+          exhibitionST:
+            live?.exhibitionST ?? null,
+
+          tilt:
+            live?.tilt ?? null
+        }
+      };
+    }
+  );
+}
+
+function scoreComponents(
+  racer,
+  allRacers
+) {
+  const c = {
+    lane:0,
+    class:0,
+    national:0,
+    local:0,
+    st:0,
+    motor:0,
+    exhibition:0,
+    exhibitionST:0,
+    course:0
+  };
+
+  c.lane =
+    ({
+      1:25,
+      2:19,
+      3:16,
+      4:13,
+      5:8,
+      6:5
+    })[racer.lane] || 0;
+
+  c.class =
+    ({
+      A1:15,
+      A2:12,
+      B1:7,
+      B2:3
+    })[racer.class] || 0;
+
+  const national =
+    safeNumber(
+      racer.national?.winRate
+    );
+
+  if (
+    national !== null
+  ) {
+    c.national =
+      Math.min(
+        18,
+        national * 2.25
+      );
+  }
+
+  const local =
+    safeNumber(
+      racer.local?.winRate
+    );
+
+  if (
+    local !== null
+  ) {
+    c.local =
+      Math.min(
+        10,
+        local * 1.25
+      );
+  }
+
+  const avgST =
+    safeNumber(
+      racer.avgST
+    );
+
+  if (
+    avgST !== null
+  ) {
+    c.st =
+      avgST <= .12
+        ? 8
+        : avgST <= .14
+          ? 7
+          : avgST <= .16
+            ? 5
+            : avgST <= .18
+              ? 3
+              : 1;
+  }
+
+  const motor =
+    safeNumber(
+      racer.motor?.secondRate
+    );
+
+  if (
+    motor !== null
+  ) {
+    c.motor =
+      Math.min(
+        10,
+        motor / 5
+      );
+  }
+
+  const times =
+    allRacers
+      .map(
+        r =>
+          safeNumber(
+            r.before?.exhibitionTime
+          )
+      )
+      .filter(
+        x =>
+          x !== null
+      );
+
+  const ex =
+    safeNumber(
+      racer.before?.exhibitionTime
+    );
+
+  if (
+    ex !== null &&
+    times.length
+  ) {
+    const diff =
+      ex -
+      Math.min(...times);
+
+    c.exhibition =
+      diff <= .01
+        ? 8
+        : diff <= .03
+          ? 7
+          : diff <= .05
+            ? 5
+            : diff <= .08
+              ? 3
+              : 1;
+  }
+
+  const exst =
+    safeNumber(
+      racer.before?.exhibitionST
+    );
+
+  if (
+    exst !== null
+  ) {
+    c.exhibitionST =
+      exst <= .05
+        ? 4
+        : exst <= .10
+          ? 3
+          : exst <= .15
+            ? 2
+            : 1;
+  }
+
+  const course =
+    safeNumber(
+      racer.before?.course
+    );
+
+  if (
+    course === 1
+  ) {
+    c.course = 2;
+
+  } else if (
+    course !== null &&
+    course <= 3
+  ) {
+    c.course = 1;
+  }
+
+  return c;
+}
+
+function blankWeights() {
+  return Object.fromEntries(
+    Object.keys(
+      COMPONENT_NAMES
+    )
+    .map(
+      k => [k, 1]
+    )
+  );
+}
+
+async function getTrainableHistoryFromD1(
+  env,
+  asOfDate = null
+) {
+  let sql = `
+    SELECT
+      race_key,
+      race_date,
+      race_data_json,
+      result_json
+    FROM learning_races
+    WHERE finished = 1
+  `;
+
+  const binds = [];
+
+  if (asOfDate) {
+    sql +=
+      ` AND race_date < ?`;
+
+    binds.push(
+      String(asOfDate)
+    );
+  }
+
+  sql +=
+    ` ORDER BY race_date ASC, race_key ASC`;
+
+  let stmt =
+    env.DB.prepare(sql);
+
+  if (
+    binds.length
+  ) {
+    stmt =
+      stmt.bind(
+        ...binds
+      );
+  }
+
+  const result =
+    await stmt.all();
+
+  const items = [];
+
+  for (
+    const row of
+    result.results || []
+  ) {
+    const item =
+      parseJsonSafe(
+        row.race_data_json,
+        {}
+      ) || {};
+
+    const separateResult =
+      parseJsonSafe(
+        row.result_json,
+        null
+      );
+
+    if (
+      !item.result &&
+      separateResult
+    ) {
+      item.result =
+        separateResult;
+    }
+
+    if (
+      !item.date
+    ) {
+      item.date =
+        row.race_date;
+    }
+
+    if (
+      item.result?.finished &&
+      Array.isArray(
+        item.racersDetailed
+      ) &&
+      item.racersDetailed.length === 6 &&
+      Array.isArray(
+        item.result.winningLanes
+      ) &&
+      item.result.winningLanes.length >= 3
+    ) {
+      items.push(item);
+    }
+  }
+
+  return items;
+}
+
+async function calculateRoleLearnedWeights(
+  env,
+  asOfDate = null
+) {
+  const history =
+    await getTrainableHistoryFromD1(
+      env,
+      asOfDate
+    );
+
+  const roles = {
+    first:
+      blankWeights(),
+
+    second:
+      blankWeights(),
+
+    third:
+      blankWeights()
+  };
+
+  if (
+    history.length < 10
+  ) {
+    return {
+      active:false,
+      races:
+        history.length,
+      roles,
+      overall:
+        blankWeights()
+    };
+  }
+
+  for (
+    const role of
+    [
+      "first",
+      "second",
+      "third"
+    ]
+  ) {
+    const idx =
+      role === "first"
+        ? 0
+        : role === "second"
+          ? 1
+          : 2;
+
+    const signals =
+      Object.fromEntries(
+        Object.keys(
+          COMPONENT_NAMES
+        )
+        .map(
+          k => [k, []]
+        )
+      );
+
+    for (
+      const item of history
+    ) {
+      const wins =
+        item.result
+          .winningLanes
+          .map(Number);
+
+      const lane =
+        wins[idx];
+
+      const actual =
+        item.racersDetailed
+          .find(
+            r =>
+              Number(r.lane) === lane
+          );
+
+      if (!actual) {
+        continue;
+      }
+
+      let pool =
+        item.racersDetailed;
+
+      if (
+        role === "second"
+      ) {
+        pool =
+          pool.filter(
+            r =>
+              Number(r.lane) !==
+              wins[0]
+          );
+      }
+
+      if (
+        role === "third"
+      ) {
+        pool =
+          pool.filter(
+            r =>
+              Number(r.lane) !==
+              wins[0]
+              &&
+              Number(r.lane) !==
+              wins[1]
+          );
+      }
+
+      for (
+        const key of
+        Object.keys(
+          COMPONENT_NAMES
+        )
+      ) {
+        const vals =
+          pool.map(
+            r =>
+              Number(
+                r.components?.[key] ||
+                0
+              )
+          );
+
+        const avg =
+          vals.length
+            ? vals.reduce(
+                (a,b) =>
+                  a + b,
+                0
+              ) / vals.length
+            : 0;
+
+        const win =
+          Number(
+            actual.components?.[key] ||
+            0
+          );
+
+        if (
+          avg > 0
+        ) {
+          signals[key].push(
+            (win - avg) / avg
+          );
+        }
+      }
+    }
+
+    for (
+      const key of
+      Object.keys(
+        COMPONENT_NAMES
+      )
+    ) {
+      const arr =
+        signals[key];
+
+      if (
+        !arr.length
+      ) {
+        roles[role][key] = 1;
+        continue;
+      }
+
+      const avg =
+        arr.reduce(
+          (a,b) =>
+            a + b,
+          0
+        ) / arr.length;
+
+      const rate =
+        role === "third"
+          ? .45
+          : .35;
+
+      const limit =
+        role === "third"
+          ? .22
+          : .18;
+
+      const adj =
+        clamp(
+          avg * rate,
+          -limit,
+          limit
+        );
+
+      roles[role][key] =
+        Math.round(
+          (1 + adj) * 1000
+        ) / 1000;
+    }
+  }
+
+  const overall = {};
+
+  for (
+    const key of
+    Object.keys(
+      COMPONENT_NAMES
+    )
+  ) {
+    overall[key] =
+      Math.round(
+        (
+          (
+            roles.first[key] +
+            roles.second[key] +
+            roles.third[key]
+          ) / 3
+        ) * 1000
+      ) / 1000;
+  }
+
+  return {
+    active:true,
+    races:
+      history.length,
+    roles,
+    overall
+  };
+}
+
+function roleScore(
+  components,
+  learned,
+  role
+) {
+  let score = 0;
+
+  for (
+    const key of
+    Object.keys(
+      COMPONENT_NAMES
+    )
+  ) {
+    score +=
+      Number(
+        components[key] || 0
+      )
+      *
+      Number(
+        learned[key] || 1
+      )
+      *
+      Number(
+        ROLE_WEIGHTS[role][key] || 1
+      );
+  }
+
+  return Math.round(
+    score * 10
+  ) / 10;
+}
+
+function overallScore(
+  components,
+  weights
+) {
+  let score = 0;
+
+  for (
+    const key of
+    Object.keys(
+      COMPONENT_NAMES
+    )
+  ) {
+    score +=
+      Number(
+        components[key] || 0
+      )
+      *
+      Number(
+        weights[key] || 1
+      );
+  }
+
+  return Math.round(
+    score * 10
+  ) / 10;
+}
+
+function makeAllCombinations() {
+  const list = [];
+
+  for (
+    let a = 1;
+    a <= 6;
+    a++
+  ) {
+    for (
+      let b = 1;
+      b <= 6;
+      b++
+    ) {
+      if (
+        b === a
+      ) {
+        continue;
+      }
+
+      for (
+        let c = 1;
+        c <= 6;
+        c++
+      ) {
+        if (
+          c !== a &&
+          c !== b
+        ) {
+          list.push(
+            `${a}-${b}-${c}`
+          );
+        }
+      }
+    }
+  }
+
+  return list;
+}
+
+function strength(score) {
+  return Math.exp(
+    score / 20
+  );
+}
+
+function firstWinShare(
+  lane,
+  racers
+) {
+  const total =
+    racers.reduce(
+      (sum,r) =>
+        sum +
+        strength(
+          r.firstScore
+        ),
+      0
+    );
+
+  const racer =
+    racers.find(
+      r =>
+        r.lane === lane
+    );
+
+  if (
+    !racer ||
+    !total
+  ) {
+    return 0;
+  }
+
+  return (
+    strength(
+      racer.firstScore
+    ) / total
+  );
+}
+
+function componentPosition(
+  value,
+  values
+) {
+  const nums =
+    values
+      .map(Number)
+      .filter(
+        Number.isFinite
+      );
+
+  if (
+    !nums.length
+  ) {
+    return .5;
+  }
+
+  const min =
+    Math.min(...nums);
+
+  const max =
+    Math.max(...nums);
+
+  if (
+    max === min
+  ) {
+    return .5;
+  }
+
+  return clamp(
+    (
+      Number(value) -
+      min
+    ) /
+    (
+      max -
+      min
+    ),
+    0,
+    1
+  );
+}
+
+function thirdConditionalScore(
+  racer,
+  first,
+  second,
+  racers
+) {
+  const remaining =
+    racers.filter(
+      r =>
+        Number(r.lane) !==
+        Number(first)
+        &&
+        Number(r.lane) !==
+        Number(second)
+    );
+
+  if (
+    !remaining.length
+  ) {
+    return racer.thirdScore;
+  }
+
+  const c =
+    racer.components || {};
+
+  const motor =
+    componentPosition(
+      c.motor,
+      remaining.map(
+        r =>
+          r.components?.motor || 0
+      )
+    );
+
+  const ex =
+    componentPosition(
+      c.exhibition,
+      remaining.map(
+        r =>
+          r.components?.exhibition || 0
+      )
+    );
+
+  const local =
+    componentPosition(
+      c.local,
+      remaining.map(
+        r =>
+          r.components?.local || 0
+      )
+    );
+
+  const national =
+    componentPosition(
+      c.national,
+      remaining.map(
+        r =>
+          r.components?.national || 0
+      )
+    );
+
+  let bonus =
+    motor * 1.6 +
+    ex * 1.4 +
+    local * 1.0 +
+    national * .6;
+
+  if (
+    Number(racer.lane) >= 4 &&
+    (
+      motor >= .60 ||
+      ex >= .60
+    )
+  ) {
+    bonus += .6;
+  }
+
+  return Math.round(
+    (
+      Number(
+        racer.thirdScore || 0
+      ) +
+      bonus
+    ) * 10
+  ) / 10;
+}
+
+function trifectaProbability(
+  first,
+  second,
+  third,
+  racers
+) {
+  const r1 =
+    racers.find(
+      r =>
+        r.lane === first
+    );
+
+  const r2 =
+    racers.find(
+      r =>
+        r.lane === second
+    );
+
+  const r3 =
+    racers.find(
+      r =>
+        r.lane === third
+    );
+
+  if (
+    !r1 ||
+    !r2 ||
+    !r3
+  ) {
+    return 0;
+  }
+
+  const total1 =
+    racers.reduce(
+      (sum,r) =>
+        sum +
+        strength(
+          r.firstScore
+        ),
+      0
+    );
+
+  const p1 =
+    strength(
+      r1.firstScore
+    ) / total1;
+
+  const secondCandidates =
+    racers.filter(
+      r =>
+        r.lane !== first
+    );
+
+  const total2 =
+    secondCandidates.reduce(
+      (sum,r) =>
+        sum +
+        strength(
+          r.secondScore
+        ),
+      0
+    );
+
+  const p2 =
+    strength(
+      r2.secondScore
+    ) / total2;
+
+  const thirdCandidates =
+    racers.filter(
+      r =>
+        r.lane !== first &&
+        r.lane !== second
+    );
+
+  const thirdScores =
+    thirdCandidates.map(
+      r => ({
+        racer:r,
+        score:
+          thirdConditionalScore(
+            r,
+            first,
+            second,
+            racers
+          )
+      })
+    );
+
+  const total3 =
+    thirdScores.reduce(
+      (sum,x) =>
+        sum +
+        strength(
+          x.score
+        ),
+      0
+    );
+
+  const actual =
+    thirdScores.find(
+      x =>
+        x.racer.lane === third
+    );
+
+  const p3 =
+    actual &&
+    total3
+      ? strength(
+          actual.score
+        ) / total3
+      : 0;
+
+  return (
+    p1 *
+    p2 *
+    p3
+  );
+}
+
+function makeOddsMap(
+  oddsData
+) {
+  const map = {};
+
+  for (
+    const item of
+    oddsData?.odds || []
+  ) {
+    map[item.combination] =
+      Number(item.odds);
+  }
+
+  return map;
+}
+
+function evaluateBets(
+  racers,
+  oddsData
+) {
+  const oddsMap =
+    makeOddsMap(
+      oddsData
+    );
+
+  const combinations = [];
+
+  for (
+    const combination of
+    makeAllCombinations()
+  ) {
+    const [
+      first,
+      second,
+      third
+    ] =
+      combination
+        .split("-")
+        .map(Number);
+
+    const odds =
+      safeNumber(
+        oddsMap[combination]
+      );
+
+    if (
+      odds === null
+    ) {
+      continue;
+    }
+
+    const r1 =
+      racers.find(
+        r =>
+          r.lane === first
+      );
+
+    const r2 =
+      racers.find(
+        r =>
+          r.lane === second
+      );
+
+    const r3 =
+      racers.find(
+        r =>
+          r.lane === third
+      );
+
+    const probability =
+      trifectaProbability(
+        first,
+        second,
+        third,
+        racers
+      );
+
+    const thirdRole =
+      thirdConditionalScore(
+        r3,
+        first,
+        second,
+        racers
+      );
+
+    combinations.push({
+      combination,
+      first,
+      second,
+      third,
+
+      firstRole:
+        r1.firstScore,
+
+      secondRole:
+        r2.secondScore,
+
+      thirdRole,
+
+      probability,
+      odds,
+
+      ev:
+        probability * odds
+    });
+  }
+
+  if (
+    !combinations.length
+  ) {
+    return [];
+  }
+
+  const maxFirst =
+    Math.max(
+      ...combinations.map(
+        x =>
+          x.firstRole
+      ),
+      1
+    );
+
+  const maxSecond =
+    Math.max(
+      ...combinations.map(
+        x =>
+          x.secondRole
+      ),
+      1
+    );
+
+  const maxThird =
+    Math.max(
+      ...combinations.map(
+        x =>
+          x.thirdRole
+      ),
+      1
+    );
+
+  const maxProbability =
+    Math.max(
+      ...combinations.map(
+        x =>
+          x.probability
+      ),
+      .000001
+    );
+
+  const maxEv =
+    Math.max(
+      ...combinations.map(
+        x =>
+          Math.min(
+            x.ev,
+            3
+          )
+      ),
+      .000001
+    );
+
+  for (
+    const item of
+    combinations
+  ) {
+    const firstNorm =
+      item.firstRole /
+      maxFirst;
+
+    const secondNorm =
+      item.secondRole /
+      maxSecond;
+
+    const thirdNorm =
+      item.thirdRole /
+      maxThird;
+
+    const probabilityNorm =
+      item.probability /
+      maxProbability;
+
+    const evNorm =
+      Math.log1p(
+        Math.min(
+          item.ev,
+          3
+        )
+      )
+      /
+      Math.log1p(
+        maxEv
+      );
+
+    item.totalScore =
+      Math.round(
+        (
+          firstNorm * .16 +
+          secondNorm * .09 +
+          thirdNorm * .10 +
+          probabilityNorm * .56 +
+          evNorm * .09
+        ) * 1000
+      ) / 10;
+  }
+
+  return combinations.sort(
+    (a,b) =>
+      b.totalScore -
+      a.totalScore
+  );
+}
+
+function getConfidence(
+  racers
+) {
+  const ranked =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.firstScore -
+          a.firstScore
+      );
+
+  if (
+    ranked.length < 3
+  ) {
+    return "B";
+  }
+
+  const gap2 =
+    ranked[0].firstScore -
+    ranked[1].firstScore;
+
+  const gap3 =
+    ranked[0].firstScore -
+    ranked[2].firstScore;
+
+  if (
+    gap2 >= 9 &&
+    gap3 >= 14
+  ) {
+    return "S";
+  }
+
+  if (
+    gap2 >= 4.5
+  ) {
+    return "A";
+  }
+
+  return "B";
+}
+
+function roleStability(
+  racers,
+  field
+) {
+  const sorted =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b[field] -
+          a[field]
+      );
+
+  if (
+    sorted.length < 6
+  ) {
+    return 0;
+  }
+
+  const top =
+    (
+      sorted[0][field] +
+      sorted[1][field] +
+      sorted[2][field]
+    ) / 3;
+
+  const bottom =
+    (
+      sorted[3][field] +
+      sorted[4][field] +
+      sorted[5][field]
+    ) / 3;
+
+  if (
+    top <= 0
+  ) {
+    return 0;
+  }
+
+  return clamp(
+    (
+      (
+        top -
+        bottom
+      ) / top
+    ) * 220,
+    0,
+    100
+  );
+}
+
+function beforeCoverage(
+  racers
+) {
+  let available = 0;
+  let total = 0;
+
+  for (
+    const racer of racers
+  ) {
+    for (
+      const v of [
+        racer.before?.exhibitionTime,
+        racer.before?.exhibitionST,
+        racer.before?.course
+      ]
+    ) {
+      total++;
+
+      if (
+        safeNumber(v) !== null
+      ) {
+        available++;
+      }
+    }
+  }
+
+  return total
+    ? available / total
+    : 0;
+}
+
+function makeSDecision(
+  confidence,
+  racers,
+  allBets
+) {
+  if (
+    confidence !== "S"
+  ) {
+    return {
+      status:"NONE",
+      label:
+        `${confidence}評価`,
+      score:0,
+      metrics:null,
+      reasons:[]
+    };
+  }
+
+  const ranked =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.firstScore -
+          a.firstScore
+      );
+
+  const firstShare =
+    firstWinShare(
+      ranked[0].lane,
+      racers
+    );
+
+  const firstGap =
+    ranked[0].firstScore -
+    ranked[1].firstScore;
+
+  const top6Probability =
+    allBets
+      .slice(
+        0,
+        6
+      )
+      .reduce(
+        (sum,bet) =>
+          sum +
+          Number(
+            bet.probability || 0
+          ),
+        0
+      );
+
+  const secondStable =
+    roleStability(
+      racers,
+      "secondScore"
+    );
+
+  const thirdStable =
+    roleStability(
+      racers,
+      "thirdScore"
+    );
+
+  const coverage =
+    beforeCoverage(
+      racers
+    );
+
+  const quality =
+    (
+      norm(
+        firstShare,
+        .22,
+        .42
+      ) * .25
+      +
+      norm(
+        top6Probability,
+        .12,
+        .28
+      ) * .25
+      +
+      norm(
+        firstGap,
+        7,
+        16
+      ) * .15
+      +
+      clamp(
+        secondStable / 100,
+        0,
+        1
+      ) * .10
+      +
+      clamp(
+        thirdStable / 100,
+        0,
+        1
+      ) * .10
+      +
+      clamp(
+        coverage,
+        0,
+        1
+      ) * .15
+    ) * 100;
+
+  const score =
+    Math.round(
+      quality * 10
+    ) / 10;
+
+  const reasons = [];
+
+  if (
+    firstShare < .30
+  ) {
+    reasons.push(
+      "1着候補の優位度が弱い"
+    );
+  }
+
+  if (
+    top6Probability < .18
+  ) {
+    reasons.push(
+      "上位6点に確率が集中していない"
+    );
+  }
+
+  if (
+    secondStable < 35
+  ) {
+    reasons.push(
+      "2着候補がばらけている"
+    );
+  }
+
+  if (
+    thirdStable < 30
+  ) {
+    reasons.push(
+      "3着候補がばらけている"
+    );
+  }
+
+  if (
+    coverage < .55
+  ) {
+    reasons.push(
+      "展示データが不足"
+    );
+  }
+
+  if (
+    score < 68
+  ) {
+    reasons.push(
+      "総合安定スコアが基準未満"
+    );
+  }
+
+  const battle =
+    score >= 68 &&
+    firstShare >= .30 &&
+    top6Probability >= .18 &&
+    coverage >= .55;
+
+  return {
+    status:
+      battle
+        ? "BET"
+        : "PASS",
+
+    label:
+      battle
+        ? "🔥 S勝負"
+        : "⚠️ S見送り",
+
+    score,
+
+    metrics:{
+      firstShare,
+      top6Probability,
+      firstGap,
+
+      secondStability:
+        secondStable,
+
+      thirdStability:
+        thirdStable,
+
+      beforeCoverage:
+        coverage
+    },
+
+    reasons:
+      battle
+        ? [
+            "1着候補が優勢",
+            "上位買い目への確率集中を確認",
+            "展示データ条件をクリア"
+          ]
+        : reasons
+  };
+} function selectMainlineBets(
+  allBets,
+  racers,
+  confidence
+) {
+  const firstRank =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.firstScore -
+          a.firstScore
+      );
+
+  const top1 =
+    firstRank[0];
+
+  const top2 =
+    firstRank[1];
+
+  const share =
+    firstWinShare(
+      top1.lane,
+      racers
+    );
+
+  const gap =
+    top1.firstScore -
+    top2.firstScore;
+
+  const secondStable =
+    roleStability(
+      racers,
+      "secondScore"
+    );
+
+  const thirdStable =
+    roleStability(
+      racers,
+      "thirdScore"
+    );
+
+  let type =
+    "BALANCED";
+
+  let label =
+    "バランス型";
+
+  let reason =
+    "上位確率を中心に広く拾う";
+
+  if (
+    share >= .34 &&
+    gap >= 10
+  ) {
+    type =
+      "FIXED";
+
+    label =
+      "1着固定型";
+
+    reason =
+      `${top1.lane}号艇の1着優位度が高い`;
+
+  } else if (
+    secondStable >= 45 &&
+    thirdStable < 35
+  ) {
+    type =
+      "THIRD_WIDE";
+
+    label =
+      "3着広げ型";
+
+    reason =
+      "2着は比較的絞れるが3着が散っている";
+
+  } else if (
+    share < .30 ||
+    gap < 6
+  ) {
+    type =
+      "SWAP";
+
+    label =
+      "1・2着入替型";
+
+    reason =
+      "1着候補の差が小さい";
+  }
+
+  let preferred = [];
+
+  if (
+    type === "FIXED"
+  ) {
+    preferred =
+      allBets.filter(
+        b =>
+          b.first ===
+          top1.lane
+      );
+
+  } else if (
+    type === "SWAP"
+  ) {
+    preferred =
+      allBets.filter(
+        b =>
+          b.first ===
+          top1.lane
+          ||
+          b.first ===
+          top2.lane
+      );
+
+  } else if (
+    type === "THIRD_WIDE"
+  ) {
+    const pool =
+      allBets
+        .filter(
+          b =>
+            b.first ===
+            top1.lane
+        )
+        .slice();
+
+    const byThird = [];
+
+    for (
+      let lane = 1;
+      lane <= 6;
+      lane++
+    ) {
+      const item =
+        pool.find(
+          b =>
+            b.third === lane
+        );
+
+      if (item) {
+        byThird.push(item);
+      }
+    }
+
+    const used =
+      new Set(
+        byThird.map(
+          item =>
+            item.combination
+        )
+      );
+
+    preferred = [
+      ...byThird,
+
+      ...pool.filter(
+        item =>
+          !used.has(
+            item.combination
+          )
+      )
+    ];
+
+  } else {
+    preferred =
+      allBets.slice();
+  }
+
+  const selected = [];
+  const seen =
+    new Set();
+
+  for (
+    const item of preferred
+  ) {
+    if (
+      selected.length >= 15
+    ) {
+      break;
+    }
+
+    if (
+      !seen.has(
+        item.combination
+      )
+    ) {
+      selected.push(item);
+
+      seen.add(
+        item.combination
+      );
+    }
+  }
+
+  for (
+    const item of allBets
+  ) {
+    if (
+      selected.length >= 15
+    ) {
+      break;
+    }
+
+    if (
+      !seen.has(
+        item.combination
+      )
+    ) {
+      selected.push(item);
+
+      seen.add(
+        item.combination
+      );
+    }
+  }
+
+  const top6 =
+    selected.slice(
+      0,
+      6
+    );
+
+  const thirds =
+    new Set(
+      top6.map(
+        item =>
+          item.third
+      )
+    );
+
+  if (
+    thirds.size < 3
+  ) {
+    const cutoff =
+      top6.length
+        ? top6[
+            top6.length - 1
+          ].totalScore
+        : 0;
+
+    for (
+      const item of
+      selected.slice(6)
+    ) {
+      if (
+        thirds.size >= 3
+      ) {
+        break;
+      }
+
+      if (
+        thirds.has(
+          item.third
+        ) ||
+        item.totalScore <
+        cutoff * .88
+      ) {
+        continue;
+      }
+
+      top6[
+        top6.length - 1
+      ] = item;
+
+      thirds.add(
+        item.third
+      );
+    }
+  }
+
+  const top6Set =
+    new Set(
+      top6.map(
+        item =>
+          item.combination
+      )
+    );
+
+  const reordered = [
+    ...top6,
+
+    ...selected.filter(
+      item =>
+        !top6Set.has(
+          item.combination
+        )
+    )
+  ].slice(
+    0,
+    15
+  );
+
+  return {
+    type,
+    label,
+
+    reason:
+      reason +
+      " / 3着候補を残り4艇で再評価",
+
+    firstShare:
+      share,
+
+    firstGap:
+      gap,
+
+    secondStability:
+      secondStable,
+
+    thirdStability:
+      thirdStable,
+
+    bets:
+      reordered
+  };
+}
+
+function holeTier(odds) {
+  if (
+    odds >= 80
+  ) {
+    return {
+      key:"big",
+      label:"💥 大穴"
+    };
+  }
+
+  if (
+    odds >= 40
+  ) {
+    return {
+      key:"hole",
+      label:"🔥 穴"
+    };
+  }
+
+  return {
+    key:"middle",
+    label:"🎯 中穴"
+  };
+}
+
+function selectHoleBets(
+  allBets,
+  mainline
+) {
+  const mainSet =
+    new Set(
+      mainline.map(
+        item =>
+          item.combination
+      )
+    );
+
+  let candidates =
+    allBets
+      .map(
+        (bet,index) => ({
+          ...bet,
+          aiRank:
+            index + 1
+        })
+      )
+      .filter(
+        bet =>
+          !mainSet.has(
+            bet.combination
+          )
+          &&
+          bet.odds >= 20
+          &&
+          bet.probability >= .003
+          &&
+          bet.ev >= .60
+          &&
+          bet.totalScore >= 30
+      );
+
+  if (
+    candidates.length < 3
+  ) {
+    candidates =
+      allBets
+        .map(
+          (bet,index) => ({
+            ...bet,
+            aiRank:
+              index + 1
+          })
+        )
+        .filter(
+          bet =>
+            !mainSet.has(
+              bet.combination
+            )
+            &&
+            bet.odds >= 18
+            &&
+            bet.probability >= .002
+            &&
+            bet.ev >= .45
+            &&
+            bet.totalScore >= 27
+        );
+  }
+
+  for (
+    const bet of
+    candidates
+  ) {
+    const probabilityScore =
+      norm(
+        bet.probability,
+        .002,
+        .025
+      );
+
+    const evScore =
+      norm(
+        Math.min(
+          bet.ev,
+          2
+        ),
+        .45,
+        1.5
+      );
+
+    const aiScore =
+      norm(
+        bet.totalScore,
+        27,
+        80
+      );
+
+    const oddsScore =
+      norm(
+        Math.log(
+          Math.max(
+            bet.odds,
+            1
+          )
+        ),
+        Math.log(18),
+        Math.log(120)
+      );
+
+    const rankScore =
+      1 -
+      norm(
+        bet.aiRank,
+        16,
+        80
+      );
+
+    bet.holeScore =
+      Math.round(
+        (
+          probabilityScore * .25 +
+          evScore * .30 +
+          aiScore * .20 +
+          oddsScore * .15 +
+          rankScore * .10
+        ) * 1000
+      ) / 10;
+
+    bet.tier =
+      holeTier(
+        bet.odds
+      );
+  }
+
+  candidates.sort(
+    (a,b) =>
+      b.holeScore -
+      a.holeScore
+  );
+
+  const selected = [];
+
+  const tierCount = {
+    middle:0,
+    hole:0,
+    big:0
+  };
+
+  const firstCount = {};
+
+  for (
+    const bet of
+    candidates
+  ) {
+    if (
+      selected.length >= 5
+    ) {
+      break;
+    }
+
+    if (
+      (
+        firstCount[
+          bet.first
+        ] || 0
+      ) >= 2
+    ) {
+      continue;
+    }
+
+    if (
+      bet.tier.key ===
+      "middle"
+      &&
+      tierCount.middle >= 2
+    ) {
+      continue;
+    }
+
+    if (
+      bet.tier.key ===
+      "hole"
+      &&
+      tierCount.hole >= 2
+    ) {
+      continue;
+    }
+
+    if (
+      bet.tier.key ===
+      "big"
+      &&
+      tierCount.big >= 1
+    ) {
+      continue;
+    }
+
+    selected.push(bet);
+
+    tierCount[
+      bet.tier.key
+    ]++;
+
+    firstCount[
+      bet.first
+    ] =
+      (
+        firstCount[
+          bet.first
+        ] || 0
+      ) + 1;
+  }
+
+  for (
+    const bet of
+    candidates
+  ) {
+    if (
+      selected.length >= 3
+    ) {
+      break;
+    }
+
+    if (
+      !selected.some(
+        item =>
+          item.combination ===
+          bet.combination
+      )
+    ) {
+      selected.push(bet);
+    }
+  }
+
+  return selected
+    .slice(
+      0,
+      5
+    )
+    .map(
+      bet => ({
+        combination:
+          bet.combination,
+
+        aiRank:
+          bet.aiRank,
+
+        probability:
+          bet.probability,
+
+        odds:
+          bet.odds,
+
+        ev:
+          bet.ev,
+
+        totalScore:
+          bet.totalScore,
+
+        holeScore:
+          bet.holeScore,
+
+        tier:
+          bet.tier,
+
+        first:
+          bet.first,
+
+        second:
+          bet.second,
+
+        third:
+          bet.third
+      })
+    );
 }
 
 /* =========================
-   パラメータ
+   サーバー予想生成
+========================= */
+
+async function buildServerPrediction(
+  env,
+  racers,
+  oddsData,
+  context
+) {
+  const learned =
+    await calculateRoleLearnedWeights(
+      env,
+      context.date
+    );
+
+  const modelRacers =
+    racers.map(
+      racer => {
+        const components =
+          scoreComponents(
+            racer,
+            racers
+          );
+
+        return {
+          ...racer,
+
+          components,
+
+          overallScore:
+            overallScore(
+              components,
+              learned.overall
+            ),
+
+          firstScore:
+            roleScore(
+              components,
+              learned.roles.first,
+              "first"
+            ),
+
+          secondScore:
+            roleScore(
+              components,
+              learned.roles.second,
+              "second"
+            ),
+
+          thirdScore:
+            roleScore(
+              components,
+              learned.roles.third,
+              "third"
+            )
+        };
+      }
+    );
+
+  const overallRanking =
+    modelRacers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.overallScore -
+          a.overallScore
+      );
+
+  const confidence =
+    getConfidence(
+      modelRacers
+    );
+
+  const allBets =
+    evaluateBets(
+      modelRacers,
+      oddsData
+    );
+
+  if (
+    !allBets.length
+  ) {
+    throw new Error(
+      "3連単オッズを取得できませんでした"
+    );
+  }
+
+  const strategy =
+    selectMainlineBets(
+      allBets,
+      modelRacers,
+      confidence
+    );
+
+  const top15 =
+    strategy.bets;
+
+  const holeBets =
+    selectHoleBets(
+      allBets,
+      top15
+    );
+
+  const sDecision =
+    makeSDecision(
+      confidence,
+      modelRacers,
+      allBets
+    );
+
+  const allBetRanking =
+    allBets.map(
+      (bet,index) => ({
+        rank:
+          index + 1,
+
+        combination:
+          bet.combination,
+
+        totalScore:
+          bet.totalScore,
+
+        probability:
+          bet.probability,
+
+        odds:
+          bet.odds,
+
+        ev:
+          bet.ev
+      })
+    );
+
+  const snapshot = {
+    id:
+      `server-${context.date}-${context.jcd}-${context.rno}-${Date.now()}`,
+
+    version:
+      AI_VERSION,
+
+    createdAt:
+      new Date()
+        .toISOString(),
+
+    date:
+      context.date,
+
+    jcd:
+      context.jcd,
+
+    venue:
+      context.venue,
+
+    rno:
+      Number(
+        context.rno
+      ),
+
+    confidence,
+
+    sDecision,
+
+    strategy:{
+      type:
+        strategy.type,
+
+      label:
+        strategy.label,
+
+      reason:
+        strategy.reason,
+
+      firstShare:
+        strategy.firstShare,
+
+      firstGap:
+        strategy.firstGap,
+
+      secondStability:
+        strategy.secondStability,
+
+      thirdStability:
+        strategy.thirdStability
+    },
+
+    evaluatedCount:
+      allBets.length,
+
+    learningRaces:
+      learned.races,
+
+    roleLearnedWeights:
+      learned.roles,
+
+    racersDetailed:
+      modelRacers.map(
+        racer => ({
+          lane:
+            racer.lane,
+
+          name:
+            racer.name,
+
+          class:
+            racer.class,
+
+          components:{
+            ...racer.components
+          },
+
+          overallScore:
+            racer.overallScore,
+
+          firstScore:
+            racer.firstScore,
+
+          secondScore:
+            racer.secondScore,
+
+          thirdScore:
+            racer.thirdScore
+        })
+      ),
+
+    bets:
+      top15.map(
+        bet => ({
+          combination:
+            bet.combination,
+
+          probability:
+            bet.probability,
+
+          odds:
+            bet.odds,
+
+          ev:
+            bet.ev,
+
+          totalScore:
+            bet.totalScore,
+
+          firstRole:
+            bet.firstRole,
+
+          secondRole:
+            bet.secondRole,
+
+          thirdRole:
+            bet.thirdRole
+        })
+      ),
+
+    holeBets,
+
+    allBetRanking
+  };
+
+  return {
+    learned,
+    modelRacers,
+    overallRanking,
+    confidence,
+    sDecision,
+    allBets,
+    top15,
+    holeBets,
+    strategy,
+    snapshot
+  };
+}
+
+/* =========================
+   AIテスト
+========================= */
+
+async function autoTestData(
+  env,
+  hd,
+  jcd,
+  rno
+) {
+  const [
+    raceResult,
+    beforeResult,
+    oddsResult
+  ] =
+    await Promise.allSettled([
+      raceData(
+        hd,
+        jcd,
+        rno
+      ),
+
+      beforeData(
+        hd,
+        jcd,
+        rno
+      ),
+
+      oddsData(
+        hd,
+        jcd,
+        rno
+      )
+    ]);
+
+  if (
+    raceResult.status !==
+    "fulfilled"
+    ||
+    !raceResult.value
+      .racers?.length
+  ) {
+    throw new Error(
+      "選手データを取得できませんでした"
+    );
+  }
+
+  const race =
+    raceResult.value;
+
+  const before =
+    beforeResult.status ===
+    "fulfilled"
+      ? beforeResult.value
+      : {
+          racers:[]
+        };
+
+  const odds =
+    oddsResult.status ===
+    "fulfilled"
+      ? oddsResult.value
+      : {
+          odds:[]
+        };
+
+  if (
+    !odds.odds?.length
+  ) {
+    throw new Error(
+      "3連単オッズを取得できませんでした"
+    );
+  }
+
+  const merged =
+    mergeBefore(
+      race.racers,
+      before
+    );
+
+  const prediction =
+    await buildServerPrediction(
+      env,
+      merged,
+      odds,
+      {
+        date:
+          hd,
+
+        jcd,
+
+        venue:
+          race.venue ||
+          VENUE_NAMES[jcd] ||
+          jcd,
+
+        rno
+      }
+    );
+
+  let deadline = null;
+  let deadlineJST = null;
+
+  try {
+    const venue =
+      await venueData(
+        hd,
+        jcd
+      );
+
+    const target =
+      venue.races.find(
+        item =>
+          Number(item.rno) ===
+          Number(rno)
+      );
+
+    deadline =
+      target?.deadline ||
+      null;
+
+    deadlineJST =
+      target?.deadlineJST ||
+      null;
+
+  } catch {}
+
+  return {
+    workerVersion:
+      WORKER_VERSION,
+
+    aiVersion:
+      AI_VERSION,
+
+    hd,
+    jcd,
+
+    venue:
+      race.venue,
+
+    rno:
+      Number(rno),
+
+    deadline,
+    deadlineJST,
+
+    beforeAvailable:
+      beforeResult.status ===
+      "fulfilled"
+      &&
+      Boolean(
+        before.racers?.length
+      ),
+
+    oddsCount:
+      odds.odds?.length ||
+      0,
+
+    learning:{
+      active:
+        prediction.learned.active,
+
+      races:
+        prediction.learned.races,
+
+      roles:
+        prediction.learned.roles
+    },
+
+    confidence:
+      prediction.confidence,
+
+    sDecision:
+      prediction.sDecision,
+
+    strategy:
+      prediction.snapshot.strategy,
+
+    overallRanking:
+      prediction.overallRanking
+        .map(
+          (racer,index) => ({
+            rank:
+              index + 1,
+
+            lane:
+              racer.lane,
+
+            name:
+              racer.name,
+
+            overallScore:
+              racer.overallScore,
+
+            firstScore:
+              racer.firstScore,
+
+            secondScore:
+              racer.secondScore,
+
+            thirdScore:
+              racer.thirdScore
+          })
+        ),
+
+    main15:
+      prediction.snapshot.bets,
+
+    holeBets:
+      prediction.holeBets,
+
+    snapshot:
+      prediction.snapshot
+  };
+}
+
+/* =========================
+   URLパラメータ
 ========================= */
 
 function getRaceParams(url) {
@@ -2062,7 +4317,7 @@ function validateRace(
   ) {
     return json(
       {
-        ok: false,
+        ok:false,
         error:
           "jcdが必要です"
       },
@@ -2071,15 +4326,13 @@ function validateRace(
   }
 
   if (
-    !Number.isInteger(
-      rno
-    ) ||
+    !Number.isInteger(rno) ||
     rno < 1 ||
     rno > 12
   ) {
     return json(
       {
-        ok: false,
+        ok:false,
         error:
           "rnoは1〜12で指定してください"
       },
@@ -2095,6 +4348,7 @@ function validateRace(
 ========================= */
 
 export default {
+
   async fetch(
     request,
     env
@@ -2106,19 +4360,20 @@ export default {
 
     try {
 
-      /* =====================
-         HEALTH
-      ===================== */
+      /* ----- health ----- */
 
       if (
         url.pathname ===
         "/api/health"
       ) {
         return json({
-          ok: true,
+          ok:true,
 
           version:
             WORKER_VERSION,
+
+          aiVersion:
+            AI_VERSION,
 
           deadlineSupport:
             true,
@@ -2135,24 +4390,26 @@ export default {
           writeAuthConfigured:
             Boolean(
               env.D1_WRITE_TOKEN
-            )
+            ),
+
+          serverAi:
+            true
         });
       }
 
-      /* =====================
-         D1 CONNECTION
-      ===================== */
+      /* ----- D1 health ----- */
 
       if (
         url.pathname ===
         "/api/db-health"
       ) {
-        if (!env.DB) {
+        if (
+          !env.DB
+        ) {
           return json(
             {
-              ok: false,
-              connected:
-                false,
+              ok:false,
+              connected:false,
               error:
                 "DB binding が見つかりません"
             },
@@ -2168,13 +4425,10 @@ export default {
             .first();
 
         return json({
-          ok: true,
-
+          ok:true,
           database:
             "usa-lab-ai",
-
-          connected:
-            true,
+          connected:true,
 
           authConfigured:
             Boolean(
@@ -2185,17 +4439,14 @@ export default {
         });
       }
 
-      /* =====================
-         D1 COUNTS
-         件数だけなので公開OK
-      ===================== */
+      /* ----- 保存件数 ----- */
 
       if (
         url.pathname ===
         "/api/storage-stats"
       ) {
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await storageStats(
@@ -2206,8 +4457,46 @@ export default {
       }
 
       /* =====================
-         PREDICTIONS
-         認証必須
+         サーバーAIテスト
+      ===================== */
+
+      if (
+        url.pathname ===
+        "/api/auto-test"
+      ) {
+        const {
+          hd,
+          jcd,
+          rno
+        } =
+          getRaceParams(url);
+
+        const error =
+          validateRace(
+            jcd,
+            rno
+          );
+
+        if (error) {
+          return error;
+        }
+
+        return json({
+          ok:true,
+
+          ...(
+            await autoTestData(
+              env,
+              hd,
+              jcd,
+              rno
+            )
+          )
+        });
+      }
+
+      /* =====================
+         予想D1
       ===================== */
 
       if (
@@ -2220,7 +4509,9 @@ export default {
             env
           );
 
-        if (authError) {
+        if (
+          authError
+        ) {
           return authError;
         }
 
@@ -2228,20 +4519,17 @@ export default {
           request.method ===
           "GET"
         ) {
-          const limit =
-            clampLimit(
-              url.searchParams.get(
-                "limit"
-              )
-            );
-
           return json({
-            ok: true,
+            ok:true,
 
             predictions:
               await listPredictions(
                 env,
-                limit
+                clampLimit(
+                  url.searchParams.get(
+                    "limit"
+                  )
+                )
               )
           });
         }
@@ -2255,21 +4543,21 @@ export default {
               request
             );
 
-          const result =
-            await savePrediction(
-              env,
-              body
-            );
-
           return json({
-            ok: true,
-            ...result
+            ok:true,
+
+            ...(
+              await savePrediction(
+                env,
+                body
+              )
+            )
           });
         }
 
         return json(
           {
-            ok: false,
+            ok:false,
             error:
               "Method Not Allowed"
           },
@@ -2278,8 +4566,7 @@ export default {
       }
 
       /* =====================
-         LEARNING
-         認証必須
+         学習D1
       ===================== */
 
       if (
@@ -2292,7 +4579,9 @@ export default {
             env
           );
 
-        if (authError) {
+        if (
+          authError
+        ) {
           return authError;
         }
 
@@ -2300,20 +4589,17 @@ export default {
           request.method ===
           "GET"
         ) {
-          const limit =
-            clampLimit(
-              url.searchParams.get(
-                "limit"
-              )
-            );
-
           return json({
-            ok: true,
+            ok:true,
 
             learning:
               await listLearning(
                 env,
-                limit
+                clampLimit(
+                  url.searchParams.get(
+                    "limit"
+                  )
+                )
               )
           });
         }
@@ -2327,21 +4613,21 @@ export default {
               request
             );
 
-          const result =
-            await saveLearningRace(
-              env,
-              body
-            );
-
           return json({
-            ok: true,
-            ...result
+            ok:true,
+
+            ...(
+              await saveLearningRace(
+                env,
+                body
+              )
+            )
           });
         }
 
         return json(
           {
-            ok: false,
+            ok:false,
             error:
               "Method Not Allowed"
           },
@@ -2350,7 +4636,7 @@ export default {
       }
 
       /* =====================
-         VENUES
+         開催場
       ===================== */
 
       if (
@@ -2364,18 +4650,16 @@ export default {
           todayJST();
 
         return json({
-          ok: true,
+          ok:true,
           hd,
 
           venues:
-            await venues(
-              hd
-            )
+            await venues(hd)
         });
       }
 
       /* =====================
-         VENUE
+         会場レース一覧
       ===================== */
 
       if (
@@ -2395,13 +4679,11 @@ export default {
 
         if (
           !jcd ||
-          !/^\d{2}$/.test(
-            jcd
-          )
+          !/^\d{2}$/.test(jcd)
         ) {
           return json(
             {
-              ok: false,
+              ok:false,
               error:
                 "jcdが必要です"
             },
@@ -2410,7 +4692,7 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await venueData(
@@ -2422,7 +4704,7 @@ export default {
       }
 
       /* =====================
-         RACERS
+         選手情報
       ===================== */
 
       if (
@@ -2434,9 +4716,7 @@ export default {
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -2449,7 +4729,7 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await raceData(
@@ -2462,7 +4742,7 @@ export default {
       }
 
       /* =====================
-         BEFORE
+         直前情報
       ===================== */
 
       if (
@@ -2474,9 +4754,7 @@ export default {
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -2489,7 +4767,7 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await beforeData(
@@ -2502,7 +4780,7 @@ export default {
       }
 
       /* =====================
-         ODDS
+         3連単オッズ
       ===================== */
 
       if (
@@ -2514,9 +4792,7 @@ export default {
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -2529,7 +4805,7 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await oddsData(
@@ -2542,7 +4818,7 @@ export default {
       }
 
       /* =====================
-         RESULT
+         結果
       ===================== */
 
       if (
@@ -2554,9 +4830,7 @@ export default {
           jcd,
           rno
         } =
-          getRaceParams(
-            url
-          );
+          getRaceParams(url);
 
         const error =
           validateRace(
@@ -2569,7 +4843,7 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
 
           ...(
             await resultData(
@@ -2581,14 +4855,18 @@ export default {
         });
       }
 
+      /* ----- Web画面 ----- */
+
       return env.ASSETS.fetch(
         request
       );
 
     } catch (error) {
+      console.error(error);
+
       return json(
         {
-          ok: false,
+          ok:false,
 
           error:
             error?.message ||
