@@ -1,4 +1,5 @@
 const OFFICIAL = "https://www.boatrace.jp";
+const WORKER_VERSION = "6.3.0";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -37,7 +38,7 @@ async function officialFetch(path) {
   const response = await fetch(OFFICIAL + path, {
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; BoatRacingAI/6.2.1)",
+        `Mozilla/5.0 (compatible; BoatRacingAI/${WORKER_VERSION})`,
       "accept":
         "text/html,application/xhtml+xml"
     }
@@ -61,6 +62,29 @@ function todayJST() {
   })
     .format(new Date())
     .replaceAll("/", "");
+}
+
+function deadlineIsoJST(hd, time) {
+  if (!/^\d{8}$/.test(String(hd || ""))) {
+    return null;
+  }
+
+  if (!/^\d{1,2}:\d{2}$/.test(String(time || ""))) {
+    return null;
+  }
+
+  const yyyy = hd.slice(0, 4);
+  const mm = hd.slice(4, 6);
+  const dd = hd.slice(6, 8);
+
+  const [h, m] =
+    time.split(":");
+
+  return (
+    `${yyyy}-${mm}-${dd}` +
+    `T${String(h).padStart(2, "0")}` +
+    `:${m}:00+09:00`
+  );
 }
 
 const VENUE_NAMES = {
@@ -100,6 +124,7 @@ const PREF =
   "熊本|大分|宮崎|鹿児島|沖縄)";
 
 function value(v) {
+
   if (
     v === undefined ||
     v === null ||
@@ -115,66 +140,221 @@ function value(v) {
     : null;
 }
 
+
 /* =========================
    開催場
 ========================= */
 
 async function venues(hd) {
-  const html = await officialFetch(
-    `/owpc/pc/race/index?hd=${hd}`
-  );
+
+  const html =
+    await officialFetch(
+      `/owpc/pc/race/index?hd=${hd}`
+    );
 
   const found = [
-    ...html.matchAll(/[?&]jcd=(\d{2})/g)
-  ].map(m => m[1]);
+    ...html.matchAll(
+      /[?&]jcd=(\d{2})/g
+    )
+  ].map(
+    m => m[1]
+  );
 
-  const ids = [...new Set(found)];
+  const ids =
+    [...new Set(found)];
 
   return ids
-    .filter(jcd => VENUE_NAMES[jcd])
-    .map(jcd => ({
-      jcd,
-      name: VENUE_NAMES[jcd]
-    }));
+    .filter(
+      jcd => VENUE_NAMES[jcd]
+    )
+    .map(
+      jcd => ({
+        jcd,
+        name:
+          VENUE_NAMES[jcd]
+      })
+    );
 }
+
+
+/* =========================
+   締切予定時刻
+========================= */
+
+function parseRaceDeadlines(html) {
+
+  const deadlines =
+    new Map();
+
+  const text =
+    stripHtml(html);
+
+  const textRegex =
+    /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/g;
+
+  let match;
+
+  while (
+    (match =
+      textRegex.exec(text))
+      !== null
+  ) {
+
+    const rno =
+      Number(match[1]);
+
+    const time =
+      match[2]
+        .padStart(5, "0");
+
+    if (
+      !deadlines.has(rno)
+    ) {
+      deadlines.set(
+        rno,
+        time
+      );
+    }
+  }
+
+  /*
+    HTML構造変更時の予備
+  */
+
+  if (
+    deadlines.size < 12
+  ) {
+
+    const rows = [
+      ...html.matchAll(
+        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+      )
+    ];
+
+    for (
+      const rowMatch of rows
+    ) {
+
+      const rowText =
+        stripHtml(
+          rowMatch[1]
+        );
+
+      const rowRegex =
+        /(?:^|\s)(1[0-2]|[1-9])R\s+([0-2]?\d:[0-5]\d)(?=\s|$)/;
+
+      const row =
+        rowText.match(
+          rowRegex
+        );
+
+      if (!row) {
+        continue;
+      }
+
+      const rno =
+        Number(row[1]);
+
+      const time =
+        row[2]
+          .padStart(5, "0");
+
+      if (
+        !deadlines.has(rno)
+      ) {
+        deadlines.set(
+          rno,
+          time
+        );
+      }
+    }
+  }
+
+  return deadlines;
+}
+
 
 /* =========================
    レース一覧
 ========================= */
 
-async function venueData(hd, jcd) {
-  const html = await officialFetch(
-    `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
-  );
+async function venueData(
+  hd,
+  jcd
+) {
 
-  const text = stripHtml(html);
+  const html =
+    await officialFetch(
+      `/owpc/pc/race/raceindex?hd=${hd}&jcd=${jcd}`
+    );
+
+  const text =
+    stripHtml(html);
+
+  const deadlines =
+    parseRaceDeadlines(
+      html
+    );
+
   const races = [];
 
-  for (let rno = 1; rno <= 12; rno++) {
+  for (
+    let rno = 1;
+    rno <= 12;
+    rno++
+  ) {
 
-    const re = new RegExp(
-      `(?:^|\\s)${rno}R(?:\\s|$)`,
-      "i"
-    );
+    const re =
+      new RegExp(
+        `(?:^|\\s)${rno}R(?:\\s|$)`,
+        "i"
+      );
 
     if (
       re.test(text) ||
-      html.includes(`rno=${rno}`)
+      html.includes(
+        `rno=${rno}`
+      )
     ) {
+
+      const deadline =
+        deadlines.get(rno)
+        || null;
+
       races.push({
+
         rno,
-        status: "出走情報あり"
+
+        status:
+          "出走情報あり",
+
+        deadline,
+
+        deadlineJST:
+          deadline
+            ? deadlineIsoJST(
+                hd,
+                deadline
+              )
+            : null
       });
     }
   }
 
   return {
+
     hd,
+
     jcd,
-    venue: VENUE_NAMES[jcd] || jcd,
+
+    venue:
+      VENUE_NAMES[jcd]
+      || jcd,
+
     races
   };
 }
+
 
 /* =========================
    選手情報
@@ -182,7 +362,8 @@ async function venueData(hd, jcd) {
 
 function parseRacers(html) {
 
-  const text = stripHtml(html);
+  const text =
+    stripHtml(html);
 
   const racers = [];
 
@@ -218,12 +399,18 @@ function parseRacers(html) {
     num;
 
   const regex =
-    new RegExp(pattern, "g");
+    new RegExp(
+      pattern,
+      "g"
+    );
 
   let match;
 
   while (
-    (match = regex.exec(text)) !== null &&
+    (match =
+      regex.exec(text))
+      !== null
+    &&
     racers.length < 6
   ) {
 
@@ -240,75 +427,117 @@ function parseRacers(html) {
 
       name:
         match[3]
-          .replace(/\s+/g, " ")
+          .replace(
+            /\s+/g,
+            " "
+          )
           .trim(),
 
       branchOrigin:
         match[4],
 
       age:
-        value(match[5]),
+        value(
+          match[5]
+        ),
 
       weight:
-        value(match[6]),
+        value(
+          match[6]
+        ),
 
       fCount:
-        value(match[7]),
+        value(
+          match[7]
+        ),
 
       lCount:
-        value(match[8]),
+        value(
+          match[8]
+        ),
 
       avgST:
-        value(match[9]),
+        value(
+          match[9]
+        ),
 
       national: {
+
         winRate:
-          value(match[10]),
+          value(
+            match[10]
+          ),
 
         secondRate:
-          value(match[11]),
+          value(
+            match[11]
+          ),
 
         thirdRate:
-          value(match[12])
+          value(
+            match[12]
+          )
       },
 
       local: {
+
         winRate:
-          value(match[13]),
+          value(
+            match[13]
+          ),
 
         secondRate:
-          value(match[14]),
+          value(
+            match[14]
+          ),
 
         thirdRate:
-          value(match[15])
+          value(
+            match[15]
+          )
       },
 
       motor: {
+
         number:
-          value(match[16]),
+          value(
+            match[16]
+          ),
 
         secondRate:
-          value(match[17]),
+          value(
+            match[17]
+          ),
 
         thirdRate:
-          value(match[18])
+          value(
+            match[18]
+          )
       },
 
       boat: {
+
         number:
-          value(match[19]),
+          value(
+            match[19]
+          ),
 
         secondRate:
-          value(match[20]),
+          value(
+            match[20]
+          ),
 
         thirdRate:
-          value(match[21])
+          value(
+            match[21]
+          )
       }
     });
   }
 
   return racers;
 }
+
 
 async function raceData(
   hd,
@@ -322,26 +551,33 @@ async function raceData(
     );
 
   return {
+
     hd,
+
     jcd,
 
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
+      VENUE_NAMES[jcd]
+      || jcd,
 
     rno:
       Number(rno),
 
     racers:
-      parseRacers(html)
+      parseRacers(
+        html
+      )
   };
 }
+
 
 /* =========================
    直前情報
 ========================= */
 
-function parseBeforeInfo(html) {
+function parseBeforeInfo(
+  html
+) {
 
   const text =
     stripHtml(html);
@@ -354,16 +590,22 @@ function parseBeforeInfo(html) {
   let match;
 
   while (
-    (match = racerRegex.exec(text)) !== null &&
+    (match =
+      racerRegex.exec(text))
+      !== null
+    &&
     racers.length < 6
   ) {
 
     const lane =
-      Number(match[1]);
+      Number(
+        match[1]
+      );
 
     if (
       !racers.some(
-        r => r.lane === lane
+        r =>
+          r.lane === lane
       )
     ) {
 
@@ -373,17 +615,26 @@ function parseBeforeInfo(html) {
 
         name:
           match[2]
-            .replace(/\s+/g, " ")
+            .replace(
+              /\s+/g,
+              " "
+            )
             .trim(),
 
         weight:
-          value(match[3]),
+          value(
+            match[3]
+          ),
 
         exhibitionTime:
-          value(match[4]),
+          value(
+            match[4]
+          ),
 
         tilt:
-          value(match[5]),
+          value(
+            match[5]
+          ),
 
         course:
           null,
@@ -393,6 +644,7 @@ function parseBeforeInfo(html) {
       });
     }
   }
+
 
   const startIndex =
     text.indexOf(
@@ -406,7 +658,9 @@ function parseBeforeInfo(html) {
 
   let startText = "";
 
-  if (startIndex >= 0) {
+  if (
+    startIndex >= 0
+  ) {
 
     startText =
       weatherIndex > startIndex
@@ -419,20 +673,26 @@ function parseBeforeInfo(html) {
           );
   }
 
+
   const startRegex =
     /(?:^|\s)([1-6])\s+\.([0-9]{2})(?=\s|$)/g;
 
   const starts = [];
 
   while (
-    (match = startRegex.exec(startText)) !== null &&
+    (match =
+      startRegex.exec(startText))
+      !== null
+    &&
     starts.length < 6
   ) {
 
     starts.push({
 
       course:
-        Number(match[1]),
+        Number(
+          match[1]
+        ),
 
       exhibitionST:
         Number(
@@ -441,13 +701,16 @@ function parseBeforeInfo(html) {
     });
   }
 
+
   racers.forEach(
     (racer, index) => {
 
       const start =
         starts[index];
 
-      if (start) {
+      if (
+        start
+      ) {
 
         racer.course =
           start.course;
@@ -457,6 +720,7 @@ function parseBeforeInfo(html) {
       }
     }
   );
+
 
   const temp =
     text.match(
@@ -477,6 +741,7 @@ function parseBeforeInfo(html) {
     text.match(
       /波高\s*(\d+(?:\.\d+)?)cm/
     );
+
 
   return {
 
@@ -507,6 +772,7 @@ function parseBeforeInfo(html) {
   };
 }
 
+
 async function beforeData(
   hd,
   jcd,
@@ -521,11 +787,12 @@ async function beforeData(
   return {
 
     hd,
+
     jcd,
 
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
+      VENUE_NAMES[jcd]
+      || jcd,
 
     rno:
       Number(rno),
@@ -536,18 +803,29 @@ async function beforeData(
   };
 }
 
+
 /* =========================
    3連単オッズ
 ========================= */
 
-function cellText(html) {
+function cellText(
+  html
+) {
 
-  return stripHtml(html)
-    .replace(/倍$/g, "")
+  return stripHtml(
+    html
+  )
+    .replace(
+      /倍$/g,
+      ""
+    )
     .trim();
 }
 
-function expandTable(tableHtml) {
+
+function expandTable(
+  tableHtml
+) {
 
   const rowMatches = [
     ...tableHtml.matchAll(
@@ -556,6 +834,7 @@ function expandTable(tableHtml) {
   ];
 
   const pending = {};
+
   const grid = [];
 
   for (
@@ -570,7 +849,9 @@ function expandTable(tableHtml) {
     ];
 
     const row = [];
+
     let col = 0;
+
 
     function usePending() {
 
@@ -579,12 +860,15 @@ function expandTable(tableHtml) {
       ) {
 
         row[col] =
-          pending[col].value;
+          pending[col]
+            .value;
 
-        pending[col].remaining--;
+        pending[col]
+          .remaining--;
 
         if (
-          pending[col].remaining <= 0
+          pending[col]
+            .remaining <= 0
         ) {
 
           delete pending[col];
@@ -594,7 +878,9 @@ function expandTable(tableHtml) {
       }
     }
 
+
     usePending();
+
 
     for (
       const cell of cells
@@ -634,6 +920,7 @@ function expandTable(tableHtml) {
             )
           : 1;
 
+
       for (
         let i = 0;
         i < colspan;
@@ -648,6 +935,7 @@ function expandTable(tableHtml) {
         ) {
 
           pending[col] = {
+
             value:
               text,
 
@@ -660,6 +948,7 @@ function expandTable(tableHtml) {
       }
     }
 
+
     usePending();
 
     grid.push(
@@ -667,10 +956,14 @@ function expandTable(tableHtml) {
     );
   }
 
+
   return grid;
 }
 
-function isBoatNumber(v) {
+
+function isBoatNumber(
+  v
+) {
 
   return /^[1-6]$/.test(
     String(v || "")
@@ -678,11 +971,17 @@ function isBoatNumber(v) {
   );
 }
 
-function parseOdd(v) {
+
+function parseOdd(
+  v
+) {
 
   const text =
     String(v || "")
-      .replace(/,/g, "")
+      .replace(
+        /,/g,
+        ""
+      )
       .trim();
 
   if (
@@ -702,7 +1001,10 @@ function parseOdd(v) {
     : null;
 }
 
-function parseOdds(html) {
+
+function parseOdds(
+  html
+) {
 
   const tables = [
     ...html.matchAll(
@@ -713,6 +1015,7 @@ function parseOdds(html) {
   const map =
     new Map();
 
+
   for (
     const table of tables
   ) {
@@ -721,6 +1024,7 @@ function parseOdds(html) {
       expandTable(
         table[0]
       );
+
 
     for (
       const row of grid
@@ -746,20 +1050,31 @@ function parseOdds(html) {
             row[base + 2]
           );
 
+
         if (
-          !isBoatNumber(second) ||
-          !isBoatNumber(third) ||
+          !isBoatNumber(
+            second
+          ) ||
+          !isBoatNumber(
+            third
+          ) ||
           odd === null
         ) {
 
           continue;
         }
 
+
         const secondNum =
-          Number(second);
+          Number(
+            second
+          );
 
         const thirdNum =
-          Number(third);
+          Number(
+            third
+          );
+
 
         if (
           first === secondNum ||
@@ -770,18 +1085,25 @@ function parseOdds(html) {
           continue;
         }
 
+
         const combination =
           `${first}-${secondNum}-${thirdNum}`;
+
 
         map.set(
           combination,
           {
+
             combination,
+
             first,
+
             second:
               secondNum,
+
             third:
               thirdNum,
+
             odds:
               odd
           }
@@ -790,10 +1112,12 @@ function parseOdds(html) {
     }
   }
 
+
   return [
     ...map.values()
   ];
 }
+
 
 async function oddsData(
   hd,
@@ -814,11 +1138,12 @@ async function oddsData(
   return {
 
     hd,
+
     jcd,
 
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
+      VENUE_NAMES[jcd]
+      || jcd,
 
     rno:
       Number(rno),
@@ -833,55 +1158,92 @@ async function oddsData(
   };
 }
 
+
 /* =========================
-   V6.2.1 結果取得
+   結果取得
 ========================= */
 
-function parsePayout(text) {
+function parsePayout(
+  text
+) {
 
-  if (!text) {
+  if (
+    !text
+  ) {
     return null;
   }
 
+
   const cleaned =
-    decodeHtml(text)
-      .replace(/[¥￥円]/g, "")
-      .replace(/,/g, "")
-      .replace(/\s+/g, "")
+    decodeHtml(
+      text
+    )
+      .replace(
+        /[¥￥円]/g,
+        ""
+      )
+      .replace(
+        /,/g,
+        ""
+      )
+      .replace(
+        /\s+/g,
+        ""
+      )
       .trim();
+
 
   const match =
     cleaned.match(
       /(\d+)/
     );
 
-  if (!match) {
+
+  if (
+    !match
+  ) {
     return null;
   }
 
+
   const n =
-    Number(match[1]);
+    Number(
+      match[1]
+    );
+
 
   return Number.isFinite(n)
     ? n
     : null;
 }
 
-function normalizeCombination(text) {
 
-  if (!text) {
+function normalizeCombination(
+  text
+) {
+
+  if (
+    !text
+  ) {
     return null;
   }
 
+
   const match =
-    stripHtml(text)
+    stripHtml(
+      text
+    )
       .match(
         /([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])/
       );
 
-  if (!match) {
+
+  if (
+    !match
+  ) {
     return null;
   }
+
 
   return (
     `${match[1]}-` +
@@ -890,10 +1252,6 @@ function normalizeCombination(text) {
   );
 }
 
-/*
-  結果ページの払戻表を
-  <tr>単位で直接解析
-*/
 
 function parseTrifectaResult(
   html
@@ -905,12 +1263,14 @@ function parseTrifectaResult(
     )
   ];
 
+
   for (
     const rowMatch of rows
   ) {
 
     const rowHtml =
       rowMatch[1];
+
 
     const cells = [
       ...rowHtml.matchAll(
@@ -923,7 +1283,10 @@ function parseTrifectaResult(
             cell[1]
           )
       )
-      .filter(Boolean);
+      .filter(
+        Boolean
+      );
+
 
     if (
       !cells.length
@@ -931,8 +1294,10 @@ function parseTrifectaResult(
       continue;
     }
 
+
     const rowText =
       cells.join(" ");
+
 
     if (
       !rowText.includes(
@@ -942,35 +1307,26 @@ function parseTrifectaResult(
       continue;
     }
 
+
     const combination =
       normalizeCombination(
         rowText
       );
 
-    /*
-      ¥7,470 / ￥7,470 / 7,470円
-      すべて許可
-    */
 
-    const payoutMatch =
-      decodeHtml(rowText)
-        .match(
-          /(?:¥|￥)?\s*([\d,]+)\s*円?/
-        );
+    let payout =
+      null;
 
-    /*
-      最初に「3」が引っかからないよう、
-      組番より後ろだけで払戻を検索
-    */
 
-    let payout = null;
-
-    if (combination) {
+    if (
+      combination
+    ) {
 
       const comboPosition =
         rowText.indexOf(
           combination
         );
+
 
       const afterCombo =
         comboPosition >= 0
@@ -980,6 +1336,7 @@ function parseTrifectaResult(
             )
           : rowText;
 
+
       const yenMatch =
         decodeHtml(
           afterCombo
@@ -987,7 +1344,10 @@ function parseTrifectaResult(
           /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*円/
         );
 
-      if (yenMatch) {
+
+      if (
+        yenMatch
+      ) {
 
         payout =
           parsePayout(
@@ -996,10 +1356,6 @@ function parseTrifectaResult(
           );
       }
 
-      /*
-        通貨記号がHTML処理で消えた場合の予備。
-        組番の次のセルから金額を探す。
-      */
 
       if (
         payout === null
@@ -1010,8 +1366,10 @@ function parseTrifectaResult(
             cell =>
               normalizeCombination(
                 cell
-              ) === combination
+              ) ===
+              combination
           );
+
 
         if (
           comboCellIndex >= 0 &&
@@ -1030,6 +1388,7 @@ function parseTrifectaResult(
       }
     }
 
+
     if (
       combination &&
       payout !== null
@@ -1042,27 +1401,33 @@ function parseTrifectaResult(
     }
   }
 
+
   return {
-    combination: null,
-    payout: null
+
+    combination:
+      null,
+
+    payout:
+      null
   };
 }
 
-/*
-  着順表
-*/
 
-function parseOrder(html) {
+function parseOrder(
+  html
+) {
 
   const text =
     stripHtml(
       html
     );
 
+
   const startInfoIndex =
     text.indexOf(
       "スタート情報"
     );
+
 
   const resultSection =
     startInfoIndex >= 0
@@ -1072,65 +1437,86 @@ function parseOrder(html) {
         )
       : text;
 
+
   const order = [];
+
 
   const first =
     resultSection.match(
       /(?:^|\s)(?:１|1)\s+([1-6])\s+\d{4}\s+/
     );
 
+
   const second =
     resultSection.match(
       /(?:^|\s)(?:２|2)\s+([1-6])\s+\d{4}\s+/
     );
+
 
   const third =
     resultSection.match(
       /(?:^|\s)(?:３|3)\s+([1-6])\s+\d{4}\s+/
     );
 
-  if (first) {
+
+  if (
+    first
+  ) {
     order.push(
-      Number(first[1])
+      Number(
+        first[1]
+      )
     );
   }
 
-  if (second) {
+
+  if (
+    second
+  ) {
     order.push(
-      Number(second[1])
+      Number(
+        second[1]
+      )
     );
   }
 
-  if (third) {
+
+  if (
+    third
+  ) {
     order.push(
-      Number(third[1])
+      Number(
+        third[1]
+      )
     );
   }
+
 
   return order;
 }
 
-function parseResult(html) {
+
+function parseResult(
+  html
+) {
 
   const text =
     stripHtml(
       html
     );
 
+
   const trifecta =
     parseTrifectaResult(
       html
     );
+
 
   let order =
     parseOrder(
       html
     );
 
-  /*
-    着順解析に失敗しても
-    3連単結果から復元
-  */
 
   if (
     order.length < 3 &&
@@ -1140,19 +1526,24 @@ function parseResult(html) {
     order =
       trifecta.combination
         .split("-")
-        .map(Number);
+        .map(
+          Number
+        );
   }
+
 
   const methodMatch =
     text.match(
       /決まり手\s*(逃げ|差し|まくり差し|まくり|抜き|恵まれ)/
     );
 
+
   const finished =
     Boolean(
       trifecta.combination &&
       trifecta.payout !== null
     );
+
 
   return {
 
@@ -1170,7 +1561,10 @@ function parseResult(html) {
 
     winningLanes:
       finished
-        ? order.slice(0, 3)
+        ? order.slice(
+            0,
+            3
+          )
         : [],
 
     method:
@@ -1179,6 +1573,7 @@ function parseResult(html) {
         : null
   };
 }
+
 
 async function resultData(
   hd,
@@ -1191,14 +1586,16 @@ async function resultData(
       `/owpc/pc/race/raceresult?hd=${hd}&jcd=${jcd}&rno=${rno}`
     );
 
+
   return {
 
     hd,
+
     jcd,
 
     venue:
-      VENUE_NAMES[jcd] ||
-      jcd,
+      VENUE_NAMES[jcd]
+      || jcd,
 
     rno:
       Number(rno),
@@ -1209,18 +1606,22 @@ async function resultData(
   };
 }
 
+
 /* =========================
    パラメータ
 ========================= */
 
-function getRaceParams(url) {
+function getRaceParams(
+  url
+) {
 
   return {
 
     hd:
       url.searchParams.get(
         "hd"
-      ) ||
+      )
+      ||
       todayJST(),
 
     jcd:
@@ -1237,6 +1638,7 @@ function getRaceParams(url) {
   };
 }
 
+
 function validateRace(
   jcd,
   rno
@@ -1251,7 +1653,10 @@ function validateRace(
 
     return json(
       {
-        ok: false,
+
+        ok:
+          false,
+
         error:
           "jcdが必要です"
       },
@@ -1259,17 +1664,23 @@ function validateRace(
     );
   }
 
+
   if (
     !Number.isInteger(
       rno
-    ) ||
-    rno < 1 ||
+    )
+    ||
+    rno < 1
+    ||
     rno > 12
   ) {
 
     return json(
       {
-        ok: false,
+
+        ok:
+          false,
+
         error:
           "rnoは1〜12で指定してください"
       },
@@ -1277,8 +1688,10 @@ function validateRace(
     );
   }
 
+
   return null;
 }
+
 
 /* =========================
    Worker
@@ -1296,7 +1709,9 @@ export default {
         request.url
       );
 
+
     try {
+
 
       if (
         url.pathname ===
@@ -1304,11 +1719,18 @@ export default {
       ) {
 
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           version:
-            "6.2.1"
+            WORKER_VERSION,
+
+          deadlineSupport:
+            true
         });
       }
+
 
       if (
         url.pathname ===
@@ -1318,18 +1740,25 @@ export default {
         const hd =
           url.searchParams.get(
             "hd"
-          ) ||
+          )
+          ||
           todayJST();
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           hd,
+
           venues:
             await venues(
               hd
             )
         });
       }
+
 
       if (
         url.pathname ===
@@ -1339,13 +1768,16 @@ export default {
         const hd =
           url.searchParams.get(
             "hd"
-          ) ||
+          )
+          ||
           todayJST();
+
 
         const jcd =
           url.searchParams.get(
             "jcd"
           );
+
 
         if (
           !jcd ||
@@ -1356,7 +1788,10 @@ export default {
 
           return json(
             {
-              ok: false,
+
+              ok:
+                false,
+
               error:
                 "jcdが必要です"
             },
@@ -1364,8 +1799,12 @@ export default {
           );
         }
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           ...(
             await venueData(
               hd,
@@ -1374,6 +1813,7 @@ export default {
           )
         });
       }
+
 
       if (
         url.pathname ===
@@ -1389,18 +1829,26 @@ export default {
             url
           );
 
+
         const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (error) {
+
+        if (
+          error
+        ) {
           return error;
         }
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           ...(
             await raceData(
               hd,
@@ -1410,6 +1858,7 @@ export default {
           )
         });
       }
+
 
       if (
         url.pathname ===
@@ -1425,18 +1874,26 @@ export default {
             url
           );
 
+
         const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (error) {
+
+        if (
+          error
+        ) {
           return error;
         }
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           ...(
             await beforeData(
               hd,
@@ -1446,6 +1903,7 @@ export default {
           )
         });
       }
+
 
       if (
         url.pathname ===
@@ -1461,18 +1919,26 @@ export default {
             url
           );
 
+
         const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (error) {
+
+        if (
+          error
+        ) {
           return error;
         }
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           ...(
             await oddsData(
               hd,
@@ -1483,10 +1949,6 @@ export default {
         });
       }
 
-      /*
-        V6.2.1
-        結果取得
-      */
 
       if (
         url.pathname ===
@@ -1502,18 +1964,26 @@ export default {
             url
           );
 
+
         const error =
           validateRace(
             jcd,
             rno
           );
 
-        if (error) {
+
+        if (
+          error
+        ) {
           return error;
         }
 
+
         return json({
-          ok: true,
+
+          ok:
+            true,
+
           ...(
             await resultData(
               hd,
@@ -1524,18 +1994,25 @@ export default {
         });
       }
 
+
       return env.ASSETS.fetch(
         request
       );
 
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
 
       return json(
         {
-          ok: false,
+
+          ok:
+            false,
 
           error:
-            error?.message ||
+            error?.message
+            ||
             String(error)
         },
         502
