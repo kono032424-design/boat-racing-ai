@@ -3882,6 +3882,776 @@ renderHistory();
 
 })();
 </script>
+<style>
+.cloud-box{
+  background:#1e293b;
+  border:1px solid #38bdf8;
+  border-radius:16px;
+  padding:14px;
+  margin-bottom:14px;
+}
 
+.cloud-token{
+  width:100%;
+  background:#fff;
+  color:#111827;
+  padding:10px;
+  border:0;
+  border-radius:10px;
+  min-height:46px;
+  font-size:16px;
+  margin-bottom:8px;
+}
+
+.cloud-save{
+  background:#0284c7;
+}
+
+.cloud-sync{
+  background:#7c3aed;
+}
+
+.cloud-check{
+  background:#059669;
+}
+</style>
+
+<script>
+/* ===== V6.6.12 D1クラウド同期 ===== */
+
+(function(){
+
+  const CLOUD_TOKEN_KEY =
+    "usa_lab_d1_token";
+
+  const CLOUD_SYNC_STATE_KEY =
+    "usa_lab_d1_sync_state";
+
+
+  /* =========================
+     画面追加
+  ========================= */
+
+  const wrap =
+    document.querySelector(".wrap");
+
+  if(!wrap){
+    return;
+  }
+
+  const version =
+    document.querySelector(".version");
+
+  const cloudCard =
+    document.createElement("div");
+
+  cloudCard.className =
+    "cloud-box";
+
+  cloudCard.innerHTML = `
+    <div class="title">
+      ☁️ D1クラウド同期
+    </div>
+
+    <div class="notice" style="margin-bottom:10px">
+      iPhoneの保存履歴を
+      Cloudflare D1にも保存します。
+      同期キーはこの端末内だけに保存されます。
+    </div>
+
+    <label>
+      D1同期キー
+    </label>
+
+    <input
+      id="cloudToken"
+      class="cloud-token"
+      type="password"
+      autocomplete="off"
+      placeholder="D1_WRITE_TOKEN の値を入力"
+    >
+
+    <button
+      id="saveCloudToken"
+      class="cloud-save"
+    >
+      🔐 同期キーを端末に保存
+    </button>
+
+    <button
+      id="testCloud"
+      class="cloud-check"
+    >
+      ☁️ D1接続を確認
+    </button>
+
+    <button
+      id="syncCloudNow"
+      class="cloud-sync"
+    >
+      ☁️ 保存履歴を今すぐD1へ同期
+    </button>
+
+    <div
+      id="cloudStatus"
+      class="status"
+    ></div>
+
+    <div class="notice">
+      通常予想・S勝負・今日の学習・過去学習・結果更新を
+      今後は自動でクラウドにも同期します。
+    </div>
+  `;
+
+  if(version){
+
+    wrap.insertBefore(
+      cloudCard,
+      version
+    );
+
+  }else{
+
+    wrap.appendChild(
+      cloudCard
+    );
+  }
+
+
+  const tokenInput =
+    document.getElementById(
+      "cloudToken"
+    );
+
+  const cloudStatus =
+    document.getElementById(
+      "cloudStatus"
+    );
+
+
+  tokenInput.value =
+    localStorage.getItem(
+      CLOUD_TOKEN_KEY
+    ) || "";
+
+
+  /* =========================
+     認証付きAPI
+  ========================= */
+
+  function getCloudToken(){
+
+    return (
+      localStorage.getItem(
+        CLOUD_TOKEN_KEY
+      ) || ""
+    ).trim();
+  }
+
+
+  async function cloudFetch(
+    url,
+    options={}
+  ){
+
+    const token =
+      getCloudToken();
+
+    if(!token){
+
+      throw new Error(
+        "D1同期キーが未設定です"
+      );
+    }
+
+    const headers = {
+      ...(options.headers || {}),
+      "authorization":
+        `Bearer ${token}`
+    };
+
+    if(
+      options.body &&
+      !headers["content-type"]
+    ){
+
+      headers["content-type"] =
+        "application/json";
+    }
+
+    const response =
+      await fetch(
+        url,
+        {
+          ...options,
+          headers,
+          cache:"no-store"
+        }
+      );
+
+    let data;
+
+    try{
+
+      data =
+        await response.json();
+
+    }catch{
+
+      throw new Error(
+        `D1応答エラー HTTP ${response.status}`
+      );
+    }
+
+    if(
+      !response.ok ||
+      !data.ok
+    ){
+
+      throw new Error(
+        data.error ||
+        `HTTP ${response.status}`
+      );
+    }
+
+    return data;
+  }
+
+
+  /* =========================
+     レース締切取得
+  ========================= */
+
+  function findDeadline(
+    item
+  ){
+
+    const race =
+      currentVenueRaces
+        ?.find(
+          r =>
+            Number(r.rno) ===
+            Number(item.rno)
+        );
+
+    return {
+      deadline:
+        race?.deadline ||
+        null,
+
+      deadlineJST:
+        race?.deadlineJST ||
+        null
+    };
+  }
+
+
+  /* =========================
+     D1予想保存
+  ========================= */
+
+  async function cloudSavePrediction(
+    item
+  ){
+
+    const deadline =
+      findDeadline(
+        item
+      );
+
+    const noteOutput =
+      document.getElementById(
+        "noteOutput"
+      );
+
+    const noteBody =
+      currentSnapshot &&
+      sameRace(
+        item,
+        currentSnapshot.date,
+        currentSnapshot.jcd,
+        currentSnapshot.rno
+      )
+        ? noteOutput?.value || null
+        : null;
+
+    return cloudFetch(
+      "/api/predictions",
+      {
+        method:"POST",
+
+        body:
+          JSON.stringify({
+            race_date:
+              item.date,
+
+            jcd:
+              item.jcd,
+
+            venue:
+              item.venue,
+
+            rno:
+              item.rno,
+
+            deadline:
+              deadline.deadline,
+
+            deadline_jst:
+              deadline.deadlineJST,
+
+            analyzed_at:
+              item.createdAt ||
+              new Date()
+                .toISOString(),
+
+            confidence:
+              item.confidence ||
+              null,
+
+            decision:
+              item.sDecision?.status ||
+              null,
+
+            stable_score:
+              item.sDecision?.score ??
+              null,
+
+            strategy:
+              item.strategy?.type ||
+              item.strategy?.label ||
+              null,
+
+            prediction:
+              item,
+
+            note_title:
+              null,
+
+            note_body:
+              noteBody,
+
+            posted:
+              false
+          })
+      }
+    );
+  }
+
+
+  /* =========================
+     D1学習保存
+  ========================= */
+
+  async function cloudSaveLearning(
+    item
+  ){
+
+    return cloudFetch(
+      "/api/learning",
+      {
+        method:"POST",
+
+        body:
+          JSON.stringify({
+            race_date:
+              item.date,
+
+            jcd:
+              item.jcd,
+
+            venue:
+              item.venue,
+
+            rno:
+              item.rno,
+
+            race_data_json:
+              item,
+
+            result_json:
+              item.result ||
+              null,
+
+            finished:
+              Boolean(
+                item.result
+                  ?.finished
+              ),
+
+            historical_import:
+              Boolean(
+                item.historicalImport
+              )
+          })
+      }
+    );
+  }
+
+
+  /* =========================
+     同期状態
+  ========================= */
+
+  function getSyncState(){
+
+    try{
+
+      return JSON.parse(
+        localStorage.getItem(
+          CLOUD_SYNC_STATE_KEY
+        ) || "{}"
+      );
+
+    }catch{
+
+      return {};
+    }
+  }
+
+
+  function saveSyncState(
+    state
+  ){
+
+    localStorage.setItem(
+      CLOUD_SYNC_STATE_KEY,
+      JSON.stringify(state)
+    );
+  }
+
+
+  function itemFingerprint(
+    item
+  ){
+
+    const result =
+      item.result;
+
+    return [
+      item.version || "",
+      item.createdAt || "",
+      item.learningOnly
+        ? "L"
+        : "P",
+      result?.finished
+        ? "F"
+        : "W",
+      result?.combination || "",
+      result?.payoutPer100 || ""
+    ].join("|");
+  }
+
+
+  /* =========================
+     1件同期
+  ========================= */
+
+  async function syncOneItem(
+    item,
+    force=false
+  ){
+
+    if(
+      !item ||
+      !item.date ||
+      !item.jcd ||
+      !item.rno
+    ){
+
+      return {
+        skipped:true
+      };
+    }
+
+    const key =
+      `${item.date}-${item.jcd}-${item.rno}-${item.learningOnly?"L":"P"}`;
+
+    const fingerprint =
+      itemFingerprint(
+        item
+      );
+
+    const state =
+      getSyncState();
+
+    if(
+      !force &&
+      state[key] ===
+      fingerprint
+    ){
+
+      return {
+        skipped:true
+      };
+    }
+
+
+    /*
+      学習用はlearning_racesへ。
+      通常保存はpredictionsへ。
+    */
+
+    if(
+      item.learningOnly
+    ){
+
+      await cloudSaveLearning(
+        item
+      );
+
+    }else{
+
+      await cloudSavePrediction(
+        item
+      );
+
+      /*
+        通常保存も学習対象にできるので
+        学習テーブルにも保存。
+      */
+
+      await cloudSaveLearning(
+        item
+      );
+    }
+
+
+    state[key] =
+      fingerprint;
+
+    saveSyncState(
+      state
+    );
+
+    return {
+      saved:true
+    };
+  }
+
+
+  /* =========================
+     履歴全同期
+  ========================= */
+
+  let cloudSyncRunning =
+    false;
+
+  async function syncHistoryToCloud(
+    force=false
+  ){
+
+    if(
+      cloudSyncRunning
+    ){
+      return;
+    }
+
+    if(
+      !getCloudToken()
+    ){
+
+      cloudStatus.textContent =
+        "D1同期キーを保存してください";
+
+      return;
+    }
+
+    cloudSyncRunning =
+      true;
+
+    try{
+
+      const history =
+        getHistory();
+
+      let saved=0;
+      let skipped=0;
+      let failed=0;
+
+      cloudStatus.textContent =
+        `☁️ D1同期開始… 0/${history.length}`;
+
+      for(
+        let i=0;
+        i<history.length;
+        i++
+      ){
+
+        try{
+
+          const result =
+            await syncOneItem(
+              history[i],
+              force
+            );
+
+          if(
+            result.saved
+          ){
+            saved++;
+          }else{
+            skipped++;
+          }
+
+        }catch(error){
+
+          console.error(
+            "D1同期失敗",
+            history[i],
+            error
+          );
+
+          failed++;
+        }
+
+        cloudStatus.textContent =
+          `☁️ D1同期中… ${i+1}/${history.length}`;
+      }
+
+      cloudStatus.innerHTML =
+        `☁️ D1同期完了` +
+        `<br>更新：${saved}件` +
+        `<br>変更なし：${skipped}件` +
+        `<br>失敗：${failed}件`;
+
+    }finally{
+
+      cloudSyncRunning =
+        false;
+    }
+  }
+
+
+  /* =========================
+     saveHistoryを拡張
+  ========================= */
+
+  const originalSaveHistory =
+    saveHistory;
+
+  saveHistory =
+    function(history){
+
+      originalSaveHistory(
+        history
+      );
+
+      /*
+        画面操作を止めないよう
+        非同期でD1同期
+      */
+
+      if(
+        getCloudToken()
+      ){
+
+        setTimeout(
+          ()=>{
+            syncHistoryToCloud(
+              false
+            );
+          },
+          100
+        );
+      }
+    };
+
+
+  /* =========================
+     キー保存
+  ========================= */
+
+  document.getElementById(
+    "saveCloudToken"
+  ).onclick =
+    ()=>{
+
+      const token =
+        tokenInput.value
+          .trim();
+
+      if(!token){
+
+        cloudStatus.textContent =
+          "同期キーを入力してください";
+
+        return;
+      }
+
+      localStorage.setItem(
+        CLOUD_TOKEN_KEY,
+        token
+      );
+
+      cloudStatus.textContent =
+        "🔐 D1同期キーをこの端末に保存しました";
+    };
+
+
+  /* =========================
+     接続テスト
+  ========================= */
+
+  document.getElementById(
+    "testCloud"
+  ).onclick =
+    async ()=>{
+
+      try{
+
+        cloudStatus.textContent =
+          "☁️ 接続確認中…";
+
+        const data =
+          await cloudFetch(
+            "/api/predictions?limit=1"
+          );
+
+        cloudStatus.textContent =
+          `✅ D1認証成功 / 保存済み予想 ${data.predictions?.length || 0}件確認`;
+
+      }catch(error){
+
+        cloudStatus.textContent =
+          `❌ ${error.message}`;
+      }
+    };
+
+
+  /* =========================
+     手動全同期
+  ========================= */
+
+  document.getElementById(
+    "syncCloudNow"
+  ).onclick =
+    ()=>{
+
+      syncHistoryToCloud(
+        true
+      );
+    };
+
+
+  /* =========================
+     起動時表示
+  ========================= */
+
+  if(
+    getCloudToken()
+  ){
+
+    cloudStatus.textContent =
+      "☁️ D1同期キー設定済み";
+
+  }else{
+
+    cloudStatus.textContent =
+      "D1同期キーはまだ設定されていません";
+  }
+
+})();
+</script>
 </body>
 </html>
