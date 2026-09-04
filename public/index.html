@@ -4782,5 +4782,202 @@ renderHistory();
     };
 })();
 </script>
+  <script>
+(function () {
+  const wrap = document.querySelector(".wrap");
+  if (!wrap) return;
+
+  const box = document.createElement("div");
+
+  box.style.cssText = `
+    background:#1e293b;
+    border:1px solid #22c55e;
+    border-radius:16px;
+    padding:14px;
+    margin:14px 0;
+  `;
+
+  box.innerHTML = `
+    <div style="
+      font-size:22px;
+      font-weight:800;
+      margin-bottom:10px;
+    ">
+      📝 AI＋note生成テスト
+    </div>
+
+    <div style="
+      opacity:.8;
+      margin-bottom:12px;
+      line-height:1.6;
+    ">
+      尼崎12RをWorker側のV6.6.12で分析し、
+      note文章まで生成します。
+      D1への保存はしません。
+    </div>
+
+    <button
+      id="autoNoteTestBtn"
+      style="
+        width:100%;
+        padding:14px;
+        border:0;
+        border-radius:12px;
+        font-size:18px;
+        font-weight:800;
+        background:#16a34a;
+        color:white;
+      "
+    >
+      🧪 AI＋note生成をテスト
+    </button>
+
+    <div
+      id="autoNoteTestResult"
+      style="
+        margin-top:14px;
+        white-space:pre-wrap;
+        line-height:1.65;
+      "
+    ></div>
+
+    <textarea
+      id="autoNoteTestBody"
+      readonly
+      style="
+        width:100%;
+        min-height:360px;
+        margin-top:12px;
+        padding:12px;
+        border-radius:12px;
+        border:1px solid #475569;
+        background:#0f172a;
+        color:white;
+        font-size:15px;
+        line-height:1.6;
+        display:none;
+      "
+    ></textarea>
+  `;
+
+  wrap.appendChild(box);
+
+  const result =
+    document.getElementById(
+      "autoNoteTestResult"
+    );
+
+  const body =
+    document.getElementById(
+      "autoNoteTestBody"
+    );
+
+  document.getElementById(
+    "autoNoteTestBtn"
+  ).onclick =
+    async () => {
+
+      const token =
+        localStorage.getItem(
+          "usa_lab_d1_token"
+        );
+
+      if (!token) {
+        result.textContent =
+          "❌ D1同期キーがありません";
+        return;
+      }
+
+      result.textContent =
+        "🤖 V6.6.12で分析中…";
+
+      body.style.display =
+        "none";
+
+      try {
+        const params =
+          new URLSearchParams({
+            hd:"20260904",
+            jcd:"13",
+            rno:"12"
+          });
+
+        const response =
+          await fetch(
+            `/api/auto-test?${params}`,
+            {
+              headers:{
+                authorization:
+                  `Bearer ${token}`
+              },
+              cache:"no-store"
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.ok
+        ) {
+          throw new Error(
+            data.error ||
+            "AIテストに失敗しました"
+          );
+        }
+
+        const main6 =
+          (data.main15 || [])
+            .slice(0,6)
+            .map(
+              item =>
+                item.combination
+            )
+            .join(" / ");
+
+        const holes =
+          (data.holeBets || [])
+            .map(
+              item =>
+                item.combination
+            )
+            .join(" / ");
+
+        result.textContent =
+          `✅ AI＋note生成成功\n\n` +
+          `会場：${data.venue} ${data.rno}R\n` +
+          `締切：${data.deadline || "-"}\n` +
+          `AI：V${data.aiVersion}\n` +
+          `学習：${data.learning?.races || 0}R\n\n` +
+
+          `勝負度：${data.confidence}\n` +
+          `判定：${data.sDecision?.label || "-"}\n` +
+          `安定スコア：${data.sDecision?.score ?? "-"}\n` +
+          `戦略：${data.strategy?.label || "-"}\n\n` +
+
+          `本線上位6点\n${main6 || "-"}\n\n` +
+          `穴候補\n${holes || "-"}\n\n` +
+
+          `note種類：${data.note?.type || "-"}\n` +
+          `noteタイトル：\n${data.note?.title || "-"}`;
+
+        if (
+          data.note?.body
+        ) {
+          body.value =
+            data.note.body;
+
+          body.style.display =
+            "block";
+        }
+
+      } catch (error) {
+        result.textContent =
+          `❌ ${error.message}`;
+      }
+    };
+})();
+</script>
 </body>
 </html>
