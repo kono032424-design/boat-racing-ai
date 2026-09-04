@@ -1,12 +1,21 @@
 {
-  "name": "aged-hill-9a89",
+  "name": "boat-racing-ai",
   "main": "src/index.js",
   "compatibility_date": "2026-09-02",
+
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
     "run_worker_first": [
       "/api/*"
     ]
-  }
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "usa-lab-ai",
+      "database_id": "ef8c4cec-8efc-4131-a17d-dd8407646384"
+    }
+  ]
 }
