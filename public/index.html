@@ -4979,5 +4979,142 @@ renderHistory();
     };
 })();
 </script>
+  <script>
+(function () {
+  const wrap = document.querySelector(".wrap");
+  if (!wrap) return;
+
+  const box = document.createElement("div");
+
+  box.style.cssText = `
+    background:#1e293b;
+    border:1px solid #f59e0b;
+    border-radius:16px;
+    padding:14px;
+    margin:14px 0;
+  `;
+
+  box.innerHTML = `
+    <div style="font-size:22px;font-weight:800;margin-bottom:10px;">
+      💾 D1自動保存テスト
+    </div>
+
+    <div style="opacity:.8;margin-bottom:12px;line-height:1.6;">
+      締切25〜35分前のレースをAI分析し、
+      D1へ実際に保存します。
+      noteへの投稿はしません。
+    </div>
+
+    <button
+      id="autoSaveTestBtn"
+      style="
+        width:100%;
+        padding:14px;
+        border:0;
+        border-radius:12px;
+        font-size:18px;
+        font-weight:800;
+        background:#f59e0b;
+        color:#111827;
+      "
+    >
+      💾 自動分析＋D1保存をテスト
+    </button>
+
+    <div
+      id="autoSaveTestResult"
+      style="
+        margin-top:14px;
+        white-space:pre-wrap;
+        line-height:1.7;
+      "
+    ></div>
+  `;
+
+  wrap.appendChild(box);
+
+  const result =
+    document.getElementById("autoSaveTestResult");
+
+  document.getElementById("autoSaveTestBtn").onclick =
+    async () => {
+
+      const token =
+        localStorage.getItem("usa_lab_d1_token");
+
+      if (!token) {
+        result.textContent =
+          "❌ D1同期キーがありません";
+        return;
+      }
+
+      result.textContent =
+        "🤖 自動分析＋D1保存中…";
+
+      try {
+        const params =
+          new URLSearchParams({
+            hd:"20260904",
+            at:"2026-09-04T15:53:00+09:00",
+            force:"1"
+          });
+
+        const response =
+          await fetch(
+            `/api/auto-run?${params}`,
+            {
+              headers:{
+                authorization:`Bearer ${token}`
+              },
+              cache:"no-store"
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(
+            data.error || "D1保存テストに失敗しました"
+          );
+        }
+
+        const lines =
+          (data.results || []).map(item => {
+            return (
+              `${item.venue || ""} ${item.rno || ""}R` +
+              `｜${item.status}` +
+              (item.confidence
+                ? `｜${item.confidence}評価`
+                : "") +
+              (item.decisionLabel
+                ? `｜${item.decisionLabel}`
+                : "") +
+              (item.predictionSaved
+                ? "｜予想D1保存✅"
+                : "") +
+              (item.learningSaved
+                ? "｜学習D1保存✅"
+                : "")
+            );
+          });
+
+        result.textContent =
+          `✅ D1保存テスト完了\n\n` +
+          `対象：${data.targetCount}R\n` +
+          `分析成功：${data.analyzedCount}R\n` +
+          `🔥 S勝負：${data.sBetCount}R\n` +
+          `⚠️ S見送り：${data.sPassCount}R\n` +
+          `学習のみ：${data.learningOnlyCount}R\n` +
+          `再試行：${data.retryCount}R\n\n` +
+          lines.join("\n");
+
+      } catch (error) {
+        result.textContent =
+          `❌ ${error.message}`;
+      }
+    };
+})();
+</script>
 </body>
 </html>
