@@ -1,9 +1,9 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.4.2";
+const WORKER_VERSION = "6.5.4";
 const AI_VERSION = "6.6.12";
 
-const AUTO_MIN_MINUTES = 25;
+const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 35;
 
 /* =========================
@@ -6576,6 +6576,2552 @@ function validateRace(
   return null;
 }
 
+/* =========================================================
+   V6.5.4 完全放置オートメーション
+   - 自動予想と結果更新を独立実行
+   - 結果をD1へ保存して finished=1
+   - predictionsへ的中判定を保存
+   - D1から自動成績を集計
+   - Cron実行状況をD1へ記録
+========================================================= */
+
+function jstDateKeyOffset(days = 0) {
+  const date =
+    new Date(
+      Date.now() +
+      days * 86400000
+    );
+
+  return new Intl.DateTimeFormat(
+    "ja-JP",
+    {
+      timeZone:
+        "Asia/Tokyo",
+
+      year:
+        "numeric",
+
+      month:
+        "2-digit",
+
+      day:
+        "2-digit"
+    }
+  )
+    .format(date)
+    .replaceAll("/", "");
+}
+
+async function ensureAutomationTables(env) {
+  await env.DB
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT,
+        finished_at TEXT,
+        status TEXT NOT NULL,
+        race_date TEXT,
+        auto_target_count INTEGER NOT NULL DEFAULT 0,
+        auto_analyzed_count INTEGER NOT NULL DEFAULT 0,
+        auto_retry_count INTEGER NOT NULL DEFAULT 0,
+        result_pending_count INTEGER NOT NULL DEFAULT 0,
+        result_checked_count INTEGER NOT NULL DEFAULT 0,
+        result_finished_count INTEGER NOT NULL DEFAULT 0,
+        error_text TEXT,
+        summary_json TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    .run();
+}
+
+function compactAutoResult(result) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    hd:
+      result.hd ||
+      null,
+
+    targetCount:
+      Number(
+        result.targetCount ||
+        0
+      ),
+
+    analyzedCount:
+      Number(
+        result.analyzedCount ||
+        0
+      ),
+
+    sBetCount:
+      Number(
+        result.sBetCount ||
+        0
+      ),
+
+    sPassCount:
+      Number(
+        result.sPassCount ||
+        0
+      ),
+
+    learningOnlyCount:
+      Number(
+        result.learningOnlyCount ||
+        0
+      ),
+
+    skippedCount:
+      Number(
+        result.skippedCount ||
+        0
+      ),
+
+    retryCount:
+      Number(
+        result.retryCount ||
+        0
+      ),
+
+    retryReasons:
+      Array.isArray(
+        result.results
+      )
+        ? result.results
+            .filter(
+              item =>
+                item.status ===
+                "RETRY"
+            )
+            .slice(
+              0,
+              10
+            )
+            .map(
+              item => ({
+                venue:
+                  item.venue ||
+                  null,
+
+                rno:
+                  item.rno ||
+                  null,
+
+                reason:
+                  item.reason ||
+                  null
+              })
+            )
+        : []
+  };
+}
+
+function compactResultUpdate(result) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    pending:
+      Number(
+        result.pending ||
+        0
+      ),
+
+    due:
+      Number(
+        result.due ||
+        0
+      ),
+
+    checked:
+      Number(
+        result.checked ||
+        0
+      ),
+
+    finished:
+      Number(
+        result.finished ||
+        0
+      ),
+
+    waiting:
+      Number(
+        result.waiting ||
+        0
+      ),
+
+    remainingDue:
+      Number(
+        result.remainingDue ||
+        0
+      ),
+
+    errors:
+      Array.isArray(
+        result.results
+      )
+        ? result.results
+            .filter(
+              item =>
+                item.status ===
+                "ERROR"
+            )
+            .slice(
+              0,
+              10
+            )
+            .map(
+              item => ({
+                venue:
+                  item.venue ||
+                  null,
+
+                rno:
+                  item.rno ||
+                  null,
+
+                error:
+                  item.error ||
+                  null
+              })
+            )
+        : []
+  };
+}
+
+async function saveAutomationRun(
+  env,
+  summary
+) {
+  await ensureAutomationTables(
+    env
+  );
+
+  const auto =
+    summary.auto ||
+    {};
+
+  const resultUpdate =
+    summary.resultUpdate ||
+    {};
+
+  await env.DB
+    .prepare(`
+      INSERT INTO automation_runs (
+        started_at,
+        finished_at,
+        status,
+        race_date,
+        auto_target_count,
+        auto_analyzed_count,
+        auto_retry_count,
+        result_pending_count,
+        result_checked_count,
+        result_finished_count,
+        error_text,
+        summary_json
+      )
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `)
+    .bind(
+      summary.startedAt ||
+      null,
+
+      summary.finishedAt ||
+      null,
+
+      summary.status ||
+      "UNKNOWN",
+
+      summary.hd ||
+      null,
+
+      Number(
+        auto.targetCount ||
+        0
+      ),
+
+      Number(
+        auto.analyzedCount ||
+        0
+      ),
+
+      Number(
+        auto.retryCount ||
+        0
+      ),
+
+      Number(
+        resultUpdate.pending ||
+        0
+      ),
+
+      Number(
+        resultUpdate.checked ||
+        0
+      ),
+
+      Number(
+        resultUpdate.finished ||
+        0
+      ),
+
+      summary.error ||
+      null,
+
+      JSON.stringify(
+        summary
+      )
+    )
+    .run();
+
+  /* 7日より古い実行ログは削除 */
+  await env.DB
+    .prepare(`
+      DELETE FROM automation_runs
+      WHERE created_at < datetime('now', '-7 days')
+    `)
+    .run();
+}
+
+async function listPendingResultRaces(env) {
+  const fromDate =
+    jstDateKeyOffset(-30);
+
+  const toDate =
+    todayJST();
+
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          jcd,
+          venue,
+          rno
+
+        FROM learning_races
+
+        WHERE finished = 0
+          AND race_date >= ?
+          AND race_date <= ?
+
+        ORDER BY
+          race_date DESC,
+          rno ASC
+
+        LIMIT 120
+      `)
+      .bind(
+        fromDate,
+        toDate
+      )
+      .all();
+
+  return (
+    result.results ||
+    []
+  );
+}
+
+async function updatePredictionResult(
+  env,
+  raceKey,
+  raceResult
+) {
+  const row =
+    await env.DB
+      .prepare(`
+        SELECT
+          prediction_json
+
+        FROM predictions
+
+        WHERE race_key = ?
+
+        LIMIT 1
+      `)
+      .bind(
+        raceKey
+      )
+      .first();
+
+  if (
+    !row ||
+    !row.prediction_json
+  ) {
+    return {
+      predictionExists:
+        false
+    };
+  }
+
+  const snapshot =
+    parseJsonSafe(
+      row.prediction_json,
+      {}
+    ) || {};
+
+  const combination =
+    raceResult.combination;
+
+  const main15 =
+    Array.isArray(
+      snapshot.bets
+    )
+      ? snapshot.bets
+      : [];
+
+  const main6 =
+    main15.slice(
+      0,
+      6
+    );
+
+  const holes =
+    Array.isArray(
+      snapshot.holeBets
+    )
+      ? snapshot.holeBets
+      : [];
+
+  const main6Hit =
+    main6.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const main15Hit =
+    main15.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const holeHit =
+    holes.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const hit =
+    main6Hit ||
+    main15Hit ||
+    holeHit;
+
+  snapshot.result =
+    raceResult;
+
+  snapshot.resultCheck = {
+    checkedAt:
+      new Date()
+        .toISOString(),
+
+    combination,
+
+    payout:
+      raceResult.payout,
+
+    main6Hit,
+    main15Hit,
+    holeHit,
+    hit
+  };
+
+  await env.DB
+    .prepare(`
+      UPDATE predictions
+
+      SET
+        prediction_json = ?,
+        updated_at = CURRENT_TIMESTAMP
+
+      WHERE race_key = ?
+    `)
+    .bind(
+      JSON.stringify(
+        snapshot
+      ),
+
+      raceKey
+    )
+    .run();
+
+  return {
+    predictionExists:
+      true,
+
+    main6Hit,
+    main15Hit,
+    holeHit,
+    hit
+  };
+}
+
+async function makeTodayDeadlineMap(rows) {
+  const today =
+    todayJST();
+
+  const todayRows =
+    rows.filter(
+      row =>
+        String(
+          row.race_date
+        ) === today
+    );
+
+  if (
+    !todayRows.length
+  ) {
+    return new Map();
+  }
+
+  const venuesToCheck = [
+    ...new Map(
+      todayRows.map(
+        row => [
+          String(
+            row.jcd
+          ).padStart(
+            2,
+            "0"
+          ),
+
+          {
+            hd:
+              today,
+
+            jcd:
+              String(
+                row.jcd
+              ).padStart(
+                2,
+                "0"
+              )
+          }
+        ]
+      )
+    ).values()
+  ];
+
+  const results =
+    await mapChunks(
+      venuesToCheck,
+      4,
+      item =>
+        venueData(
+          item.hd,
+          item.jcd
+        )
+    );
+
+  const map =
+    new Map();
+
+  for (
+    const result of results
+  ) {
+    if (
+      result.status !==
+      "fulfilled"
+    ) {
+      continue;
+    }
+
+    const venue =
+      result.value;
+
+    for (
+      const race of
+      venue.races || []
+    ) {
+      map.set(
+        makeRaceKey(
+          venue.hd,
+          venue.jcd,
+          race.rno
+        ),
+
+        race.deadlineJST ||
+        null
+      );
+    }
+  }
+
+  return map;
+}
+
+async function runResultUpdates(env) {
+  const pending =
+    await listPendingResultRaces(
+      env
+    );
+
+  if (
+    !pending.length
+  ) {
+    return {
+      ok:true,
+      checkedAt:
+        new Date()
+          .toISOString(),
+      pending:0,
+      due:0,
+      checked:0,
+      finished:0,
+      waiting:0,
+      remainingDue:0,
+      results:[]
+    };
+  }
+
+  const today =
+    todayJST();
+
+  const deadlineMap =
+    await makeTodayDeadlineMap(
+      pending
+    );
+
+  const now =
+    Date.now();
+
+  const due = [];
+  let waiting = 0;
+
+  for (
+    const row of pending
+  ) {
+    const raceDate =
+      String(
+        row.race_date
+      );
+
+    /* 昨日以前は即チェック */
+    if (
+      raceDate < today
+    ) {
+      due.push(
+        row
+      );
+      continue;
+    }
+
+    /* 今日分は締切5分後から */
+    const deadlineJST =
+      deadlineMap.get(
+        row.race_key
+      );
+
+    if (
+      !deadlineJST
+    ) {
+      waiting++;
+      continue;
+    }
+
+    const deadlineMs =
+      new Date(
+        deadlineJST
+      ).getTime();
+
+    if (
+      !Number.isFinite(
+        deadlineMs
+      ) ||
+      now <
+        deadlineMs +
+        5 * 60000
+    ) {
+      waiting++;
+      continue;
+    }
+
+    due.push(
+      row
+    );
+  }
+
+  const output = [];
+  let checked = 0;
+  let finished = 0;
+
+  /*
+    新しい未確定レースを優先して最大12R。
+    古い取消・不成立レースがあっても
+    今日の更新を塞がない。
+  */
+  for (
+    const row of
+    due.slice(
+      0,
+      12
+    )
+  ) {
+    checked++;
+
+    try {
+      const raceResult =
+        await resultData(
+          String(
+            row.race_date
+          ),
+
+          String(
+            row.jcd
+          ).padStart(
+            2,
+            "0"
+          ),
+
+          Number(
+            row.rno
+          )
+        );
+
+      if (
+        !raceResult.finished
+      ) {
+        output.push({
+          raceKey:
+            row.race_key,
+
+          venue:
+            row.venue,
+
+          rno:
+            row.rno,
+
+          status:
+            "WAIT_RESULT"
+        });
+
+        continue;
+      }
+
+      await saveLearningRace(
+        env,
+        {
+          race_date:
+            String(
+              row.race_date
+            ),
+
+          jcd:
+            String(
+              row.jcd
+            ).padStart(
+              2,
+              "0"
+            ),
+
+          venue:
+            row.venue,
+
+          rno:
+            Number(
+              row.rno
+            ),
+
+          result:
+            raceResult,
+
+          finished:
+            true
+        }
+      );
+
+      const predictionCheck =
+        await updatePredictionResult(
+          env,
+          row.race_key,
+          raceResult
+        );
+
+      finished++;
+
+      output.push({
+        raceKey:
+          row.race_key,
+
+        venue:
+          row.venue,
+
+        rno:
+          row.rno,
+
+        status:
+          "FINISHED",
+
+        combination:
+          raceResult.combination,
+
+        payout:
+          raceResult.payout,
+
+        ...predictionCheck
+      });
+
+    } catch (error) {
+      output.push({
+        raceKey:
+          row.race_key,
+
+        venue:
+          row.venue,
+
+        rno:
+          row.rno,
+
+        status:
+          "ERROR",
+
+        error:
+          error?.message ||
+          String(error)
+      });
+    }
+  }
+
+  return {
+    ok:true,
+    checkedAt:
+      new Date()
+        .toISOString(),
+    pending:
+      pending.length,
+    due:
+      due.length,
+    checked,
+    finished,
+    waiting,
+    remainingDue:
+      Math.max(
+        0,
+        due.length -
+        checked
+      ),
+    results:
+      output
+  };
+}
+
+
+/* =========================================================
+   LINE自動通知 V6.5.4
+   - 当日の保存済み「🔥 S勝負」を毎回D1から再確認
+   - race_keyで重複送信を防止
+   - 送信失敗は次回Cronで再試行
+   - 先頭12件だけを見る制限を廃止し、通知漏れを防止
+========================================================= */
+
+async function ensureLineNotificationTable(env) {
+  await env.DB
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS line_notifications (
+        race_key TEXT PRIMARY KEY,
+        race_date TEXT NOT NULL,
+        jcd TEXT,
+        venue TEXT,
+        rno INTEGER,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        sent_at TEXT,
+        error_text TEXT,
+        message_text TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    .run();
+
+  await env.DB
+    .prepare(`
+      CREATE INDEX IF NOT EXISTS idx_line_notifications_date
+      ON line_notifications(race_date)
+    `)
+    .run();
+}
+
+function lineNotificationConfigured(env) {
+  return Boolean(
+    env.LINE_CHANNEL_ACCESS_TOKEN &&
+    env.LINE_USER_ID
+  );
+}
+
+async function sendLinePush(env, text) {
+  if (!lineNotificationConfigured(env)) {
+    throw new Error(
+      "LINE_CHANNEL_ACCESS_TOKEN または LINE_USER_ID が未設定です"
+    );
+  }
+
+  const response =
+    await fetch(
+      "https://api.line.me/v2/bot/message/push",
+      {
+        method:"POST",
+        headers:{
+          "content-type":
+            "application/json",
+          "authorization":
+            `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`
+        },
+        body:JSON.stringify({
+          to:
+            env.LINE_USER_ID,
+          messages:[
+            {
+              type:"text",
+              text:String(text || "")
+            }
+          ],
+          notificationDisabled:false
+        })
+      }
+    );
+
+  if (!response.ok) {
+    const detail =
+      await response.text();
+
+    throw new Error(
+      `LINE送信エラー HTTP ${response.status}` +
+      (detail
+        ? `: ${detail.slice(0, 400)}`
+        : "")
+    );
+  }
+
+  return true;
+}
+
+function buildLineSBetMessage(pick) {
+  const main =
+    Array.isArray(pick.main6)
+      ? pick.main6
+          .slice(0, 6)
+          .map(
+            (bet, index) =>
+              `${index + 1}. ${bet.combination}` +
+              (bet.odds != null
+                ? `（${bet.odds}倍）`
+                : "")
+          )
+          .join("\n")
+      : "-";
+
+  const holes =
+    Array.isArray(pick.holes) &&
+    pick.holes.length
+      ? pick.holes
+          .slice(0, 3)
+          .map(
+            bet =>
+              `${bet.combination}` +
+              (bet.odds != null
+                ? `（${bet.odds}倍）`
+                : "")
+          )
+          .join(" / ")
+      : "なし";
+
+  const share =
+    pick.firstShare == null
+      ? "-"
+      : `${(Number(pick.firstShare) * 100).toFixed(1)}%`;
+
+  const top6 =
+    pick.top6Probability == null
+      ? "-"
+      : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
+
+  return `🐰🚤 うさLAB｜競艇AI予想
+
+🔥 S勝負が出ました
+${pick.venue} ${pick.rno}R
+締切：${pick.deadline || "-"}
+信頼度：${pick.stars || "-"}
+Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
+1着推定力：${share}
+上位6点確率：${top6}
+戦略：${pick.strategy || "-"}
+
+【本線6点】
+${main}
+
+【穴候補】
+${holes}
+
+S勝負一覧
+https://aged-hill-9a89.kono032424.workers.dev/api/s-picks-view
+
+※的中や利益を保証するものではありません。`;
+}
+
+async function saveLineNotificationState(
+  env,
+  pick,
+  status,
+  message,
+  errorText = null
+) {
+  await ensureLineNotificationTable(
+    env
+  );
+
+  await env.DB
+    .prepare(`
+      INSERT INTO line_notifications (
+        race_key,
+        race_date,
+        jcd,
+        venue,
+        rno,
+        status,
+        sent_at,
+        error_text,
+        message_text,
+        updated_at
+      )
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+      )
+
+      ON CONFLICT(race_key)
+      DO UPDATE SET
+        status=excluded.status,
+        sent_at=excluded.sent_at,
+        error_text=excluded.error_text,
+        message_text=excluded.message_text,
+        updated_at=CURRENT_TIMESTAMP
+    `)
+    .bind(
+      pick.raceKey,
+      pick.raceDate,
+      pick.jcd || null,
+      pick.venue || null,
+      Number(pick.rno) || null,
+      status,
+      status === "SENT"
+        ? nowJST()
+        : null,
+      errorText,
+      message || null
+    )
+    .run();
+}
+
+async function getLineNotificationState(
+  env,
+  raceKey
+) {
+  await ensureLineNotificationTable(
+    env
+  );
+
+  return await env.DB
+    .prepare(`
+      SELECT
+        race_key,
+        status,
+        sent_at,
+        error_text,
+        updated_at
+      FROM line_notifications
+      WHERE race_key = ?
+      LIMIT 1
+    `)
+    .bind(raceKey)
+    .first();
+}
+
+async function listLineNotificationStates(
+  env,
+  raceDate
+) {
+  await ensureLineNotificationTable(
+    env
+  );
+
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          status,
+          sent_at,
+          error_text,
+          updated_at
+        FROM line_notifications
+        WHERE race_date = ?
+      `)
+      .bind(
+        raceDate
+      )
+      .all();
+
+  return new Map(
+    (result.results || [])
+      .map(
+        row => [
+          row.race_key,
+          row
+        ]
+      )
+  );
+}
+
+async function runLineNotifications(
+  env,
+  raceDate = todayJST()
+) {
+  await ensureLineNotificationTable(
+    env
+  );
+
+  if (!lineNotificationConfigured(env)) {
+    return {
+      ok:false,
+      configured:false,
+      candidates:0,
+      sent:0,
+      skipped:0,
+      failed:0,
+      expired:0,
+      results:[],
+      error:
+        "LINEのシークレットが未設定です"
+    };
+  }
+
+  /*
+    V6.5.4:
+    「今回のCronで新しく分析したレース」ではなく、
+    D1に保存済みの当日S勝負を毎回すべて確認する。
+    これにより、先にD1へ保存されたレースや
+    13件目以降のS勝負も通知対象になる。
+  */
+  const picks =
+    await listSBetPredictions(
+      env,
+      raceDate
+    );
+
+  const stateMap =
+    await listLineNotificationStates(
+      env,
+      raceDate
+    );
+
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+  let expired = 0;
+  const results = [];
+  const now = Date.now();
+
+  for (
+    const pick of picks
+  ) {
+    const existing =
+      stateMap.get(
+        pick.raceKey
+      );
+
+    if (
+      existing?.status === "SENT" ||
+      existing?.status === "EXPIRED"
+    ) {
+      skipped++;
+      continue;
+    }
+
+    if (pick.deadlineJST) {
+      const deadlineMs =
+        new Date(
+          pick.deadlineJST
+        ).getTime();
+
+      if (
+        Number.isFinite(deadlineMs) &&
+        now >= deadlineMs
+      ) {
+        const message =
+          buildLineSBetMessage(
+            pick
+          );
+
+        await saveLineNotificationState(
+          env,
+          pick,
+          "EXPIRED",
+          message,
+          "締切後のため通知しませんでした"
+        );
+
+        stateMap.set(
+          pick.raceKey,
+          {
+            race_key:pick.raceKey,
+            status:"EXPIRED"
+          }
+        );
+
+        expired++;
+        skipped++;
+        results.push({
+          raceKey:pick.raceKey,
+          venue:pick.venue,
+          rno:pick.rno,
+          status:"EXPIRED"
+        });
+        continue;
+      }
+    }
+
+    const message =
+      buildLineSBetMessage(
+        pick
+      );
+
+    try {
+      await sendLinePush(
+        env,
+        message
+      );
+
+      await saveLineNotificationState(
+        env,
+        pick,
+        "SENT",
+        message,
+        null
+      );
+
+      stateMap.set(
+        pick.raceKey,
+        {
+          race_key:pick.raceKey,
+          status:"SENT"
+        }
+      );
+
+      sent++;
+      results.push({
+        raceKey:pick.raceKey,
+        venue:pick.venue,
+        rno:pick.rno,
+        status:"SENT"
+      });
+
+    } catch (error) {
+      failed++;
+
+      const errorText =
+        error?.message ||
+        String(error);
+
+      await saveLineNotificationState(
+        env,
+        pick,
+        "ERROR",
+        message,
+        errorText
+      );
+
+      stateMap.set(
+        pick.raceKey,
+        {
+          race_key:pick.raceKey,
+          status:"ERROR",
+          error_text:errorText
+        }
+      );
+
+      results.push({
+        raceKey:pick.raceKey,
+        venue:pick.venue,
+        rno:pick.rno,
+        status:"ERROR",
+        error:errorText
+      });
+    }
+  }
+
+  return {
+    ok:
+      failed === 0,
+    configured:true,
+    candidates:
+      picks.length,
+    sent,
+    skipped,
+    failed,
+    expired,
+    results
+  };
+}
+
+function compactLineNotification(result) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    configured:
+      Boolean(result.configured),
+    candidates:
+      Number(result.candidates || 0),
+    sent:
+      Number(result.sent || 0),
+    skipped:
+      Number(result.skipped || 0),
+    failed:
+      Number(result.failed || 0),
+    expired:
+      Number(result.expired || 0),
+    errors:
+      Array.isArray(result.results)
+        ? result.results
+            .filter(
+              item =>
+                item.status === "ERROR"
+            )
+            .slice(0, 5)
+        : []
+  };
+}
+
+async function runScheduledAutomation(
+  env,
+  event = null
+) {
+  const startedAt =
+    nowJST();
+
+  const hd =
+    todayJST();
+
+  console.log(
+    "USA_LAB_CRON_START",
+    JSON.stringify({
+      workerVersion:
+        WORKER_VERSION,
+      aiVersion:
+        AI_VERSION,
+      hd,
+      startedAt,
+      cron:
+        event?.cron ||
+        "manual"
+    })
+  );
+
+  const tasks =
+    await Promise.allSettled([
+      runAutoWindow(
+        env,
+        {
+          hd
+        }
+      ),
+
+      runResultUpdates(
+        env
+      )
+    ]);
+
+  const autoTask =
+    tasks[0];
+
+  const resultTask =
+    tasks[1];
+
+  const auto =
+    autoTask.status ===
+    "fulfilled"
+      ? compactAutoResult(
+          autoTask.value
+        )
+      : null;
+
+  const resultUpdate =
+    resultTask.status ===
+    "fulfilled"
+      ? compactResultUpdate(
+          resultTask.value
+        )
+      : null;
+
+  const errors = [];
+
+  if (
+    autoTask.status ===
+    "rejected"
+  ) {
+    errors.push(
+      `AUTO: ${autoTask.reason?.message || String(autoTask.reason)}`
+    );
+  }
+
+  if (
+    resultTask.status ===
+    "rejected"
+  ) {
+    errors.push(
+      `RESULT: ${resultTask.reason?.message || String(resultTask.reason)}`
+    );
+  }
+
+  let lineNotify =
+    null;
+
+  try {
+    lineNotify =
+      compactLineNotification(
+        await runLineNotifications(
+          env,
+          hd
+        )
+      );
+
+  } catch (error) {
+    const lineError =
+      error?.message ||
+      String(error);
+
+    errors.push(
+      `LINE: ${lineError}`
+    );
+
+    lineNotify = {
+      configured:
+        lineNotificationConfigured(env),
+      candidates:0,
+      sent:0,
+      skipped:0,
+      failed:1,
+      errors:[
+        {
+          error:lineError
+        }
+      ]
+    };
+  }
+
+  const finishedAt =
+    nowJST();
+
+  const hasWarnings =
+    Number(
+      auto?.retryCount ||
+      0
+    ) > 0
+    ||
+    Number(
+      resultUpdate
+        ?.errors
+        ?.length ||
+      0
+    ) > 0
+    ||
+    Number(
+      lineNotify
+        ?.failed ||
+      0
+    ) > 0;
+
+  const summary = {
+    workerVersion:
+      WORKER_VERSION,
+    aiVersion:
+      AI_VERSION,
+    hd,
+    startedAt,
+    finishedAt,
+    status:
+      errors.length
+        ? "PARTIAL_ERROR"
+        : hasWarnings
+          ? "WARN"
+          : "OK",
+    auto,
+    resultUpdate,
+    lineNotify,
+    error:
+      errors.length
+        ? errors.join(
+            " | "
+          )
+        : null
+  };
+
+  try {
+    await saveAutomationRun(
+      env,
+      summary
+    );
+  } catch (error) {
+    console.error(
+      "USA_LAB_AUTOMATION_LOG_SAVE_ERROR",
+      error?.message ||
+      String(error)
+    );
+  }
+
+  console.log(
+    "USA_LAB_CRON_RESULT",
+    JSON.stringify(
+      summary
+    )
+  );
+
+  return summary;
+}
+
+async function automationStatus(env) {
+  await ensureAutomationTables(
+    env
+  );
+
+  const latest =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          started_at,
+          finished_at,
+          status,
+          race_date,
+          auto_target_count,
+          auto_analyzed_count,
+          auto_retry_count,
+          result_pending_count,
+          result_checked_count,
+          result_finished_count,
+          error_text,
+          created_at
+        FROM automation_runs
+        ORDER BY id DESC
+        LIMIT 1
+      `)
+      .first();
+
+  const recentResult =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          started_at,
+          finished_at,
+          status,
+          race_date,
+          auto_target_count,
+          auto_analyzed_count,
+          auto_retry_count,
+          result_pending_count,
+          result_checked_count,
+          result_finished_count,
+          error_text,
+          created_at
+        FROM automation_runs
+        ORDER BY id DESC
+        LIMIT 10
+      `)
+      .all();
+
+  const pending =
+    await env.DB
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM learning_races
+        WHERE finished = 0
+      `)
+      .first();
+
+  await ensureLineNotificationTable(
+    env
+  );
+
+  const lineLatest =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          venue,
+          rno,
+          status,
+          sent_at,
+          error_text,
+          updated_at
+        FROM line_notifications
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `)
+      .first();
+
+  const lineToday =
+    await env.DB
+      .prepare(`
+        SELECT
+          SUM(CASE WHEN status='SENT' THEN 1 ELSE 0 END) AS sent_count,
+          SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) AS error_count
+        FROM line_notifications
+        WHERE race_date = ?
+      `)
+      .bind(
+        todayJST()
+      )
+      .first();
+
+  return {
+    workerVersion:
+      WORKER_VERSION,
+    aiVersion:
+      AI_VERSION,
+    cron:
+      "*/5 * * * *",
+    autoWindow:
+      `${AUTO_MIN_MINUTES}-${AUTO_MAX_MINUTES}min`,
+    latest:
+      latest ||
+      null,
+    recent:
+      recentResult.results ||
+      [],
+    pendingLearningRaces:
+      Number(
+        pending?.count ||
+        0
+      ),
+    lineNotification:{
+      configured:
+        lineNotificationConfigured(env),
+      todaySent:
+        Number(
+          lineToday?.sent_count ||
+          0
+        ),
+      todayErrors:
+        Number(
+          lineToday?.error_count ||
+          0
+        ),
+      latest:
+        lineLatest ||
+        null
+    },
+    storage:
+      await storageStats(
+        env
+      )
+  };
+}
+
+
+/* =========================
+   S勝負ダッシュボード
+   V6.5.1
+========================= */
+
+async function listSBetPredictions(
+  env,
+  raceDate
+) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          jcd,
+          venue,
+          rno,
+          deadline,
+          deadline_jst,
+          analyzed_at,
+          confidence,
+          decision,
+          stable_score,
+          strategy,
+          prediction_json,
+          note_title,
+          note_body,
+          posted,
+          updated_at
+
+        FROM predictions
+
+        WHERE race_date = ?
+          AND confidence = 'S'
+          AND decision = 'BET'
+
+        ORDER BY
+          CASE
+            WHEN deadline_jst IS NULL THEN 1
+            ELSE 0
+          END ASC,
+          deadline_jst ASC,
+          rno ASC
+      `)
+      .bind(
+        raceDate
+      )
+      .all();
+
+  return (
+    result.results || []
+  ).map(
+    row => {
+      const snapshot =
+        parseJsonSafe(
+          row.prediction_json,
+          {}
+        ) || {};
+
+      const main6 =
+        Array.isArray(
+          snapshot.bets
+        )
+          ? snapshot.bets
+              .slice(0, 6)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+
+                  totalScore:
+                    bet.totalScore ?? null,
+
+                  odds:
+                    bet.odds ?? null,
+
+                  probability:
+                    bet.probability ?? null
+                })
+              )
+          : [];
+
+      const holes =
+        Array.isArray(
+          snapshot.holeBets
+        )
+          ? snapshot.holeBets
+              .slice(0, 5)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+
+                  odds:
+                    bet.odds ?? null,
+
+                  holeScore:
+                    bet.holeScore ?? null,
+
+                  tier:
+                    bet.tier?.label || null
+                })
+              )
+          : [];
+
+      return {
+        raceKey:
+          row.race_key,
+
+        raceDate:
+          row.race_date,
+
+        jcd:
+          row.jcd,
+
+        venue:
+          row.venue,
+
+        rno:
+          Number(
+            row.rno
+          ),
+
+        deadline:
+          row.deadline,
+
+        deadlineJST:
+          row.deadline_jst,
+
+        analyzedAt:
+          row.analyzed_at,
+
+        confidence:
+          row.confidence,
+
+        decision:
+          row.decision,
+
+        stableScore:
+          row.stable_score,
+
+        strategy:
+          row.strategy,
+
+        stars:
+          confidenceStars(
+            snapshot
+          ),
+
+        firstShare:
+          snapshot.sDecision
+            ?.metrics
+            ?.firstShare ?? null,
+
+        top6Probability:
+          snapshot.sDecision
+            ?.metrics
+            ?.top6Probability ?? null,
+
+        firstGap:
+          snapshot.sDecision
+            ?.metrics
+            ?.firstGap ?? null,
+
+        main6,
+        holes,
+
+        result:
+          snapshot.result || null,
+
+        resultCheck:
+          snapshot.resultCheck || null,
+
+        noteTitle:
+          row.note_title || null,
+
+        noteBody:
+          row.note_body || null,
+
+        posted:
+          Boolean(
+            row.posted
+          ),
+
+        updatedAt:
+          row.updated_at
+      };
+    }
+  );
+}
+
+
+/* =========================================================
+   V6.5.4 D1自動成績集計
+   - ブラウザlocalStorageではなくD1を正本にする
+   - 自動分析したS/A/Bの結果確定レースを集計
+   - 本線6点 / 上位15点 / 穴候補 / S勝負 / ★★★★★
+========================================================= */
+
+function blankPerformanceBucket() {
+  return {
+    races:0,
+    main6Hits:0,
+    main15Hits:0,
+    holeHits:0,
+    candidateHits:0,
+    sBetRaces:0,
+    sBetMain6Hits:0,
+    sBetCandidateHits:0,
+    fiveStarRaces:0,
+    fiveStarMain6Hits:0,
+    fiveStarCandidateHits:0
+  };
+}
+
+function performanceRate(
+  hits,
+  races
+) {
+  return races > 0
+    ? hits / races * 100
+    : 0;
+}
+
+function finalizePerformanceBucket(
+  bucket
+) {
+  return {
+    ...bucket,
+
+    main6HitRate:
+      performanceRate(
+        bucket.main6Hits,
+        bucket.races
+      ),
+
+    main15HitRate:
+      performanceRate(
+        bucket.main15Hits,
+        bucket.races
+      ),
+
+    holeHitRate:
+      performanceRate(
+        bucket.holeHits,
+        bucket.races
+      ),
+
+    candidateHitRate:
+      performanceRate(
+        bucket.candidateHits,
+        bucket.races
+      ),
+
+    sBetMain6HitRate:
+      performanceRate(
+        bucket.sBetMain6Hits,
+        bucket.sBetRaces
+      ),
+
+    sBetCandidateHitRate:
+      performanceRate(
+        bucket.sBetCandidateHits,
+        bucket.sBetRaces
+      ),
+
+    fiveStarMain6HitRate:
+      performanceRate(
+        bucket.fiveStarMain6Hits,
+        bucket.fiveStarRaces
+      ),
+
+    fiveStarCandidateHitRate:
+      performanceRate(
+        bucket.fiveStarCandidateHits,
+        bucket.fiveStarRaces
+      )
+  };
+}
+
+function addPerformanceResult(
+  bucket,
+  snapshot,
+  result
+) {
+  const combination =
+    result?.combination ||
+    (
+      Array.isArray(
+        result?.winningLanes
+      ) &&
+      result.winningLanes.length >= 3
+        ? result.winningLanes
+            .slice(0, 3)
+            .join("-")
+        : null
+    );
+
+  const main15 =
+    Array.isArray(
+      snapshot?.bets
+    )
+      ? snapshot.bets
+      : [];
+
+  if (
+    !combination ||
+    !main15.length
+  ) {
+    return false;
+  }
+
+  const main6 =
+    main15.slice(
+      0,
+      6
+    );
+
+  const holes =
+    Array.isArray(
+      snapshot?.holeBets
+    )
+      ? snapshot.holeBets
+      : [];
+
+  const main6Hit =
+    main6.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const main15Hit =
+    main15.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const holeHit =
+    holes.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const candidateHit =
+    main6Hit ||
+    holeHit;
+
+  const isSBet =
+    snapshot?.confidence === "S" &&
+    snapshot?.sDecision?.status === "BET";
+
+  const isFiveStar =
+    isSBet &&
+    Number(
+      snapshot?.sDecision?.score ||
+      0
+    ) >= 80;
+
+  bucket.races++;
+
+  if (main6Hit) {
+    bucket.main6Hits++;
+  }
+
+  if (main15Hit) {
+    bucket.main15Hits++;
+  }
+
+  if (holeHit) {
+    bucket.holeHits++;
+  }
+
+  if (candidateHit) {
+    bucket.candidateHits++;
+  }
+
+  if (isSBet) {
+    bucket.sBetRaces++;
+
+    if (main6Hit) {
+      bucket.sBetMain6Hits++;
+    }
+
+    if (candidateHit) {
+      bucket.sBetCandidateHits++;
+    }
+  }
+
+  if (isFiveStar) {
+    bucket.fiveStarRaces++;
+
+    if (main6Hit) {
+      bucket.fiveStarMain6Hits++;
+    }
+
+    if (candidateHit) {
+      bucket.fiveStarCandidateHits++;
+    }
+  }
+
+  return true;
+}
+
+async function performanceOverview(env) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          jcd,
+          venue,
+          rno,
+          race_data_json,
+          result_json
+        FROM learning_races
+        WHERE finished = 1
+          AND race_data_json IS NOT NULL
+          AND result_json IS NOT NULL
+        ORDER BY race_date DESC, rno DESC
+        LIMIT 5000
+      `)
+      .all();
+
+  const today =
+    todayJST();
+
+  const sevenDayStart =
+    jstDateKeyOffset(-6);
+
+  const allBucket =
+    blankPerformanceBucket();
+
+  const sevenBucket =
+    blankPerformanceBucket();
+
+  const todayBucket =
+    blankPerformanceBucket();
+
+  let skipped = 0;
+
+  for (
+    const row of
+    result.results || []
+  ) {
+    const snapshot =
+      parseJsonSafe(
+        row.race_data_json,
+        null
+      );
+
+    const raceResult =
+      parseJsonSafe(
+        row.result_json,
+        null
+      );
+
+    const date =
+      String(
+        row.race_date ||
+        ""
+      );
+
+    if (
+      !snapshot ||
+      !raceResult ||
+      !Array.isArray(
+        snapshot.bets
+      ) ||
+      !snapshot.bets.length
+    ) {
+      skipped++;
+      continue;
+    }
+
+    const counted =
+      addPerformanceResult(
+        allBucket,
+        snapshot,
+        raceResult
+      );
+
+    if (!counted) {
+      skipped++;
+      continue;
+    }
+
+    if (
+      date >= sevenDayStart &&
+      date <= today
+    ) {
+      addPerformanceResult(
+        sevenBucket,
+        snapshot,
+        raceResult
+      );
+    }
+
+    if (
+      date === today
+    ) {
+      addPerformanceResult(
+        todayBucket,
+        snapshot,
+        raceResult
+      );
+    }
+  }
+
+  return {
+    generatedAt:
+      nowJST(),
+    todayDate:
+      today,
+    sevenDayStart,
+    today:
+      finalizePerformanceBucket(
+        todayBucket
+      ),
+    last7Days:
+      finalizePerformanceBucket(
+        sevenBucket
+      ),
+    all:
+      finalizePerformanceBucket(
+        allBucket
+      ),
+    skippedWithoutPrediction:
+      skipped,
+    note:
+      "回収率は購入金額データを自動予想に保存していないため集計対象外です"
+  };
+}
+
+function sPicksDashboardHtml() {
+  return `<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#8d72c7">
+<title>うさLAB｜S勝負一覧</title>
+<style>
+  :root{
+    color-scheme:light;
+    --bg:#f7f3ff;
+    --card:#ffffff;
+    --ink:#2f2840;
+    --muted:#766f85;
+    --line:#e7def5;
+    --accent:#8d72c7;
+    --accent2:#efe7ff;
+    --hot:#f25772;
+    --ok:#2d9c6d;
+    --warn:#b98224;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Hiragino Sans","Yu Gothic",sans-serif;
+    background:linear-gradient(180deg,#f4eeff 0,#fbf9ff 45%,#f7f3ff 100%);
+    color:var(--ink);
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:18px 14px 48px}
+  .hero{
+    background:rgba(255,255,255,.88);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:18px;
+    box-shadow:0 8px 30px rgba(71,46,113,.08);
+  }
+  h1{font-size:24px;margin:0 0 6px}
+  .sub{font-size:13px;color:var(--muted);line-height:1.6}
+  .controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  input,button{
+    appearance:none;
+    border-radius:12px;
+    border:1px solid var(--line);
+    font:inherit;
+  }
+  input{background:#fff;padding:11px 12px;min-width:0;flex:1}
+  button{padding:11px 14px;background:var(--accent);color:#fff;font-weight:700;border-color:var(--accent);cursor:pointer}
+  button.secondary{background:#fff;color:var(--accent)}
+  .status{margin:14px 2px 0;font-size:13px;color:var(--muted)}
+  .summary{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap}
+  .pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 11px;font-size:13px}
+  .performance{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+  .perfCard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 6px 18px rgba(71,46,113,.05)}
+  .perfCard h3{font-size:14px;margin:0 0 8px}
+  .perfBig{font-size:20px;font-weight:900;color:var(--accent)}
+  .perfRow{display:flex;justify-content:space-between;gap:8px;margin-top:5px;font-size:12px;color:var(--muted)}
+  .perfRow b{color:var(--ink)}
+  .perfNote{grid-column:1/-1;font-size:11px;color:var(--muted);padding:0 2px}
+  .grid{display:grid;gap:14px}
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:20px;
+    overflow:hidden;
+    box-shadow:0 8px 24px rgba(71,46,113,.06);
+  }
+  .cardHead{padding:15px 16px 12px;background:linear-gradient(135deg,#fff,#faf6ff);border-bottom:1px solid var(--line)}
+  .raceLine{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .race{font-size:21px;font-weight:800}
+  .badge{font-size:13px;font-weight:800;color:#fff;background:var(--hot);border-radius:999px;padding:7px 10px;white-space:nowrap}
+  .meta{margin-top:7px;color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px}
+  .metric{background:var(--accent2);border-radius:12px;padding:10px;text-align:center}
+  .metric b{display:block;font-size:17px;margin-top:2px}
+  .label{font-size:11px;color:var(--muted)}
+  .section{padding:4px 16px 14px}
+  .section h3{font-size:14px;margin:10px 0 8px}
+  .bets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .bet{border:1px solid var(--line);border-radius:11px;padding:9px 10px;background:#fff;font-weight:800}
+  .bet small{display:block;color:var(--muted);font-weight:500;margin-top:3px}
+  .holes{display:flex;gap:7px;flex-wrap:wrap}
+  .hole{background:#fff6ed;border:1px solid #f5dcc3;border-radius:999px;padding:7px 9px;font-size:12px}
+  .result{margin:0 16px 14px;border-radius:12px;padding:10px 12px;font-weight:700}
+  .result.hit{background:#eaf8f1;color:var(--ok)}
+  .result.miss{background:#fff1f3;color:#c14d62}
+  .actions{display:flex;gap:8px;padding:0 16px 16px}
+  .actions button{flex:1;padding:10px 9px;font-size:13px}
+  .empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:32px 16px;text-align:center;color:var(--muted)}
+  .error{color:#b4364c}
+  @media(max-width:520px){
+    .metrics{grid-template-columns:repeat(3,1fr);padding-left:12px;padding-right:12px}
+    .bets{grid-template-columns:1fr 1fr}
+    .metric{padding:9px 5px}
+    .metric b{font-size:15px}
+    .performance{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>🐰🚤 うさLAB｜S勝負一覧</h1>
+    <div class="sub">今日の「🔥 S勝負」だけを自動表示。1分ごとに更新します。予想内容は認証後だけ表示されます。</div>
+    <div class="controls">
+      <input id="token" type="password" placeholder="D1_WRITE_TOKEN">
+      <button id="save">認証して表示</button>
+      <button id="refresh" class="secondary">更新</button>
+      <button id="lineTest" class="secondary">LINEテスト</button>
+    </div>
+    <div id="status" class="status">読み込み待ち</div>
+  </div>
+
+  <div id="performance" class="performance"></div>
+  <div id="summary" class="summary"></div>
+  <div id="list" class="grid"></div>
+</div>
+
+<script>
+(function(){
+  var TOKEN_KEY = "usa_lab_d1_token";
+  var tokenInput = document.getElementById("token");
+  var list = document.getElementById("list");
+  var status = document.getElementById("status");
+  var summary = document.getElementById("summary");
+  var performance = document.getElementById("performance");
+
+  function esc(v){
+    return String(v == null ? "" : v)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/\"/g,"&quot;")
+      .replace(/'/g,"&#39;");
+  }
+
+  function pct(v){
+    if(v == null || !isFinite(Number(v))) return "-";
+    return (Number(v) * 100).toFixed(1) + "%";
+  }
+
+  function fmtScore(v){
+    if(v == null || !isFinite(Number(v))) return "-";
+    return Number(v).toFixed(1);
+  }
+
+  function todayKey(){
+    var parts = new Intl.DateTimeFormat("ja-JP",{
+      timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+    }).format(new Date()).split("/");
+    return parts.join("");
+  }
+
+  function copyText(text){
+    if(!text) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        status.textContent = "コピーしました";
+      });
+    }
+  }
+
+  function rateText(v){
+    if(v == null || !isFinite(Number(v))) return "-";
+    return Number(v).toFixed(1) + "%";
+  }
+
+  function renderPerformance(data){
+    if(!data){
+      performance.innerHTML = '<div class="perfNote">成績データを取得できませんでした。</div>';
+      return;
+    }
+
+    var groups = [
+      ['今日', data.today],
+      ['過去7日', data.last7Days],
+      ['全期間', data.all]
+    ];
+
+    performance.innerHTML = groups.map(function(item){
+      var label = item[0];
+      var s = item[1] || {};
+      var races = Number(s.races || 0);
+      var main6 = Number(s.main6Hits || 0);
+      var candidate = Number(s.candidateHits || 0);
+      var sRaces = Number(s.sBetRaces || 0);
+      var sHits = Number(s.sBetMain6Hits || 0);
+      var fiveRaces = Number(s.fiveStarRaces || 0);
+      var fiveHits = Number(s.fiveStarMain6Hits || 0);
+
+      return '<div class="perfCard">' +
+        '<h3>📊 ' + esc(label) + '</h3>' +
+        '<div class="perfBig">' + races + 'R</div>' +
+        '<div class="perfRow"><span>本線6点</span><b>' + main6 + '/' + races + '（' + rateText(s.main6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>本線6点＋穴</span><b>' + candidate + '/' + races + '（' + rateText(s.candidateHitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>🔥S勝負 本線6点</span><b>' + sHits + '/' + sRaces + '（' + rateText(s.sBetMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>★★★★★ 本線6点</span><b>' + fiveHits + '/' + fiveRaces + '（' + rateText(s.fiveStarMain6HitRate) + '）</b></div>' +
+      '</div>';
+    }).join('') +
+      '<div class="perfNote">※自動分析→D1保存→結果取得済みのレースだけを集計。回収率は実購入額を保存していないため表示していません。</div>';
+  }
+
+  function render(data){
+    var picks = data.picks || [];
+    summary.innerHTML =
+      '<span class="pill">🔥 S勝負 <b>' + picks.length + 'R</b></span>' +
+      '<span class="pill">更新 ' + esc(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})) + '</span>';
+
+    if(!picks.length){
+      list.innerHTML = '<div class="empty">現在、今日の🔥 S勝負はありません。</div>';
+      return;
+    }
+
+    list.innerHTML = picks.map(function(p){
+      var main = (p.main6 || []).map(function(b,i){
+        return '<div class="bet">' + (i+1) + '. ' + esc(b.combination) +
+          '<small>AI ' + esc(fmtScore(b.totalScore)) + ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</small></div>';
+      }).join('');
+
+      var holes = (p.holes || []).map(function(b){
+        return '<span class="hole">' + esc(b.tier || '穴') + ' ' + esc(b.combination) +
+          ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</span>';
+      }).join('');
+
+      var result = '';
+      if(p.resultCheck){
+        var rc = p.resultCheck || {};
+        var candidateHit = !!rc.main6Hit || !!rc.holeHit;
+        var label = rc.main6Hit
+          ? '✅ 本線6点的中'
+          : rc.holeHit
+            ? '✅ 穴候補的中'
+            : rc.main15Hit
+              ? '参考：上位15点内'
+              : '❌ 本線6点・穴候補外';
+        result = '<div class="result ' + (candidateHit ? 'hit' : 'miss') + '">' +
+          label + '：' + esc(rc.combination || '-') +
+          (rc.payout != null ? ' / ' + esc(rc.payout) + '円' : '') + '</div>';
+      }
+
+      var picksText = (p.venue || '') + ' ' + p.rno + 'R\\n' +
+        (p.main6 || []).map(function(b){ return b.combination; }).join('\\n');
+
+      return '<article class="card">' +
+        '<div class="cardHead">' +
+          '<div class="raceLine"><div class="race">' + esc(p.venue) + ' ' + esc(p.rno) + 'R</div>' +
+          '<div class="badge">🔥 S勝負 ' + esc(p.stars || '') + '</div></div>' +
+          '<div class="meta"><span>締切 ' + esc(p.deadline || '-') + '</span><span>' + esc(p.strategy || '-') + '</span><span>Sスコア ' + esc(fmtScore(p.stableScore)) + '</span></div>' +
+        '</div>' +
+        '<div class="metrics">' +
+          '<div class="metric"><span class="label">1着推定力</span><b>' + esc(pct(p.firstShare)) + '</b></div>' +
+          '<div class="metric"><span class="label">上位6点確率</span><b>' + esc(pct(p.top6Probability)) + '</b></div>' +
+          '<div class="metric"><span class="label">1着点差</span><b>' + esc(fmtScore(p.firstGap)) + '</b></div>' +
+        '</div>' +
+        '<div class="section"><h3>本線6点</h3><div class="bets">' + main + '</div></div>' +
+        (holes ? '<div class="section"><h3>穴候補</h3><div class="holes">' + holes + '</div></div>' : '') +
+        result +
+        '<div class="actions">' +
+          '<button class="secondary" data-copy-picks="' + esc(picksText) + '">買い目コピー</button>' +
+          '<button data-copy-note="' + esc(p.noteBody || '') + '">note文章コピー</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-copy-picks]'),function(btn){
+      btn.addEventListener('click',function(){ copyText(btn.getAttribute('data-copy-picks')); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-copy-note]'),function(btn){
+      btn.addEventListener('click',function(){ copyText(btn.getAttribute('data-copy-note')); });
+    });
+  }
+
+  async function load(){
+    var token = tokenInput.value.trim() || localStorage.getItem(TOKEN_KEY) || '';
+    if(!token){
+      status.textContent = 'トークンを入力してください';
+      list.innerHTML = '<div class="empty">認証後にS勝負を表示します。</div>';
+      return;
+    }
+
+    status.textContent = '読み込み中…';
+
+    try{
+      var response = await fetch('/api/s-picks?date=' + encodeURIComponent(todayKey()),{
+        headers:{'Authorization':'Bearer ' + token},
+        cache:'no-store'
+      });
+      var data = await response.json();
+      if(!response.ok || !data.ok){
+        throw new Error(data.error || '取得に失敗しました');
+      }
+      localStorage.setItem(TOKEN_KEY,token);
+      status.textContent = '自動更新中・最終取得 ' + new Date().toLocaleTimeString('ja-JP');
+      render(data);
+
+      try{
+        var statsResponse = await fetch('/api/performance-stats',{
+          headers:{'Authorization':'Bearer ' + token},
+          cache:'no-store'
+        });
+        var statsData = await statsResponse.json();
+        if(statsResponse.ok && statsData.ok){
+          renderPerformance(statsData.performance);
+        }else{
+          renderPerformance(null);
+        }
+      }catch(statsError){
+        renderPerformance(null);
+      }
+    }catch(e){
+      status.innerHTML = '<span class="error">' + esc(e.message || String(e)) + '</span>';
+    }
+  }
+
+  async function lineTest(){
+    var token = (tokenInput.value || '').trim();
+    if(!token){
+      status.innerHTML = '<span class="error">D1_WRITE_TOKENを入力してください</span>';
+      return;
+    }
+    status.textContent = 'LINEテスト送信中...';
+    try{
+      var response = await fetch('/api/line-test',{
+        method:'POST',
+        headers:{
+          'authorization':'Bearer ' + token,
+          'content-type':'application/json'
+        }
+      });
+      var data = await response.json();
+      if(!response.ok || !data.ok){
+        throw new Error(data.error || 'LINEテスト送信に失敗しました');
+      }
+      localStorage.setItem(TOKEN_KEY,token);
+      status.textContent = '✅ LINEテスト通知を送信しました';
+    }catch(e){
+      status.innerHTML = '<span class="error">' + esc(e.message || String(e)) + '</span>';
+    }
+  }
+
+  document.getElementById('save').addEventListener('click',load);
+  document.getElementById('refresh').addEventListener('click',load);
+  document.getElementById('lineTest').addEventListener('click',lineTest);
+  tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+  load();
+  setInterval(load,60000);
+})();
+</script>
+</body>
+</html>`;
+}
+
 /* =========================
    Worker
 ========================= */
@@ -6638,7 +9184,28 @@ export default {
             `${AUTO_MIN_MINUTES}-${AUTO_MAX_MINUTES}min`,
 
           cronEnabled:
-            false
+            true,
+
+          resultAutomation:
+            true,
+
+          automationLogs:
+            true,
+
+          sPicksDashboard:
+            true,
+
+          lineNotification:
+            true,
+
+          lineNotificationConfigured:
+            lineNotificationConfigured(env),
+
+          lineNotificationBackfill:
+            true,
+
+          d1PerformanceStats:
+            true
         });
       }
 
@@ -6700,6 +9267,200 @@ export default {
           ...(
             await storageStats(
               env
+            )
+          )
+        });
+      }
+
+
+      /* ===== AUTOMATION STATUS ===== */
+
+      if (
+        url.pathname ===
+        "/api/automation-status"
+      ) {
+        return json({
+          ok:true,
+
+          ...(
+            await automationStatus(
+              env
+            )
+          )
+        });
+      }
+
+
+
+      /* ===== V6.5.4 自動成績 API ===== */
+
+      if (
+        url.pathname ===
+        "/api/performance-stats"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+          performance:
+            await performanceOverview(
+              env
+            )
+        });
+      }
+
+
+      /* ===== S勝負 API ===== */
+
+      if (
+        url.pathname ===
+        "/api/s-picks"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (
+          authError
+        ) {
+          return authError;
+        }
+
+        const raceDate =
+          url.searchParams.get(
+            "date"
+          ) ||
+          todayJST();
+
+        if (
+          !/^\d{8}$/.test(
+            String(
+              raceDate
+            )
+          )
+        ) {
+          return json(
+            {
+              ok:false,
+              error:
+                "dateはYYYYMMDDで指定してください"
+            },
+            400
+          );
+        }
+
+        const picks =
+          await listSBetPredictions(
+            env,
+            raceDate
+          );
+
+        return json({
+          ok:true,
+          raceDate,
+          count:
+            picks.length,
+          picks
+        });
+      }
+
+      /* ===== S勝負 画面 ===== */
+
+      if (
+        url.pathname ===
+        "/api/s-picks-view"
+      ) {
+        return new Response(
+          sPicksDashboardHtml(),
+          {
+            status:200,
+            headers:{
+              "content-type":
+                "text/html; charset=utf-8",
+              "cache-control":
+                "no-store"
+            }
+          }
+        );
+      }
+
+      /* ===== LINE テスト通知 ===== */
+
+      if (
+        url.pathname ===
+        "/api/line-test"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        if (
+          !lineNotificationConfigured(
+            env
+          )
+        ) {
+          return json(
+            {
+              ok:false,
+              configured:false,
+              error:
+                "LINEのシークレットが未設定です"
+            },
+            503
+          );
+        }
+
+        await sendLinePush(
+          env,
+          `🐰🚤 うさLAB｜競艇AI予想\n\n✅ LINE通知テスト成功\n\nCloudflareからLINEへ正常に通知できています。\n時刻：${nowJST()}`
+        );
+
+        return json({
+          ok:true,
+          configured:true,
+          message:
+            "LINEテスト通知を送信しました"
+        });
+      }
+
+      /* ===== LINE S勝負通知を手動実行 ===== */
+
+      if (
+        url.pathname ===
+        "/api/line-notify-run"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+          ...(
+            await runLineNotifications(
+              env,
+              todayJST()
             )
           )
         });
@@ -6876,6 +9637,71 @@ export default {
                 at,
                 force
               }
+            )
+          )
+        });
+      }
+
+      /* =====================
+         RESULT UPDATE
+         認証あり・結果更新のみ
+      ===================== */
+
+      if (
+        url.pathname ===
+        "/api/result-update"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (
+          authError
+        ) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+
+          ...(
+            await runResultUpdates(
+              env
+            )
+          )
+        });
+      }
+
+      /* =====================
+         AUTOMATION RUN
+         認証あり・予想＋結果更新
+      ===================== */
+
+      if (
+        url.pathname ===
+        "/api/automation-run"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (
+          authError
+        ) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+
+          ...(
+            await runScheduledAutomation(
+              env,
+              null
             )
           )
         });
@@ -7285,751 +10111,10 @@ export default {
     ctx
   ) {
     ctx.waitUntil(
-      runAutoWindow(
+      runScheduledAutomation(
         env,
-        {
-          hd:
-            todayJST()
-        }
+        event
       )
     );
   }
-};/* =========================================================
-   V6.4.2
-   結果自動取得 → D1更新 → 的中判定 → 次回学習
-   既存コードは変更せず、一番下に追加するだけ
-========================================================= */
-
-function jstDateKeyOffset(days = 0) {
-  const date =
-    new Date(
-      Date.now() +
-      days * 86400000
-    );
-
-  return new Intl.DateTimeFormat(
-    "ja-JP",
-    {
-      timeZone:
-        "Asia/Tokyo",
-
-      year:
-        "numeric",
-
-      month:
-        "2-digit",
-
-      day:
-        "2-digit"
-    }
-  )
-    .format(date)
-    .replaceAll("/", "");
-}
-
-
-/* =========================================================
-   未確定レース取得
-   直近7日分まで取りこぼしを回収
-========================================================= */
-
-async function listPendingResultRaces(
-  env
-) {
-  const fromDate =
-    jstDateKeyOffset(-7);
-
-  const toDate =
-    todayJST();
-
-  const result =
-    await env.DB
-      .prepare(`
-        SELECT
-          race_key,
-          race_date,
-          jcd,
-          venue,
-          rno
-
-        FROM learning_races
-
-        WHERE finished = 0
-          AND race_date >= ?
-          AND race_date <= ?
-
-        ORDER BY
-          race_date ASC,
-          rno ASC
-
-        LIMIT 80
-      `)
-      .bind(
-        fromDate,
-        toDate
-      )
-      .all();
-
-  return (
-    result.results ||
-    []
-  );
-}
-
-
-/* =========================================================
-   predictions側にも結果・的中判定を保存
-========================================================= */
-
-async function updatePredictionResult(
-  env,
-  raceKey,
-  raceResult
-) {
-  const row =
-    await env.DB
-      .prepare(`
-        SELECT
-          prediction_json
-
-        FROM predictions
-
-        WHERE race_key = ?
-
-        LIMIT 1
-      `)
-      .bind(
-        raceKey
-      )
-      .first();
-
-  if (
-    !row ||
-    !row.prediction_json
-  ) {
-    return {
-      predictionExists:
-        false
-    };
-  }
-
-  const snapshot =
-    parseJsonSafe(
-      row.prediction_json,
-      {}
-    ) || {};
-
-  const combination =
-    raceResult
-      .combination;
-
-  const main15 =
-    Array.isArray(
-      snapshot.bets
-    )
-      ? snapshot.bets
-      : [];
-
-  const main6 =
-    main15.slice(
-      0,
-      6
-    );
-
-  const holes =
-    Array.isArray(
-      snapshot.holeBets
-    )
-      ? snapshot.holeBets
-      : [];
-
-  const main6Hit =
-    main6.some(
-      bet =>
-        bet.combination ===
-        combination
-    );
-
-  const main15Hit =
-    main15.some(
-      bet =>
-        bet.combination ===
-        combination
-    );
-
-  const holeHit =
-    holes.some(
-      bet =>
-        bet.combination ===
-        combination
-    );
-
-  const hit =
-    main6Hit ||
-    main15Hit ||
-    holeHit;
-
-  snapshot.result =
-    raceResult;
-
-  snapshot.resultCheck = {
-    checkedAt:
-      new Date()
-        .toISOString(),
-
-    combination,
-
-    payout:
-      raceResult.payout,
-
-    main6Hit,
-
-    main15Hit,
-
-    holeHit,
-
-    hit
-  };
-
-  await env.DB
-    .prepare(`
-      UPDATE predictions
-
-      SET
-        prediction_json = ?,
-        updated_at =
-          CURRENT_TIMESTAMP
-
-      WHERE race_key = ?
-    `)
-    .bind(
-      JSON.stringify(
-        snapshot
-      ),
-
-      raceKey
-    )
-    .run();
-
-  return {
-    predictionExists:
-      true,
-
-    main6Hit,
-
-    main15Hit,
-
-    holeHit,
-
-    hit
-  };
-}
-
-
-/* =========================================================
-   今日のレース締切を取得
-========================================================= */
-
-async function makeTodayDeadlineMap(
-  rows
-) {
-  const today =
-    todayJST();
-
-  const todayRows =
-    rows.filter(
-      row =>
-        String(
-          row.race_date
-        ) === today
-    );
-
-  if (
-    !todayRows.length
-  ) {
-    return new Map();
-  }
-
-  const venuesToCheck = [
-    ...new Map(
-      todayRows.map(
-        row => [
-          String(
-            row.jcd
-          ).padStart(
-            2,
-            "0"
-          ),
-
-          {
-            hd:
-              today,
-
-            jcd:
-              String(
-                row.jcd
-              ).padStart(
-                2,
-                "0"
-              )
-          }
-        ]
-      )
-    ).values()
-  ];
-
-  const results =
-    await mapChunks(
-      venuesToCheck,
-      4,
-
-      item =>
-        venueData(
-          item.hd,
-          item.jcd
-        )
-    );
-
-  const map =
-    new Map();
-
-  for (
-    const result of
-    results
-  ) {
-    if (
-      result.status !==
-      "fulfilled"
-    ) {
-      continue;
-    }
-
-    const venue =
-      result.value;
-
-    for (
-      const race of
-      venue.races || []
-    ) {
-      map.set(
-        makeRaceKey(
-          venue.hd,
-          venue.jcd,
-          race.rno
-        ),
-
-        race.deadlineJST ||
-        null
-      );
-    }
-  }
-
-  return map;
-}
-
-
-/* =========================================================
-   結果自動更新
-========================================================= */
-
-async function runResultUpdates(
-  env
-) {
-  const pending =
-    await listPendingResultRaces(
-      env
-    );
-
-  if (
-    !pending.length
-  ) {
-    return {
-      ok:true,
-
-      checkedAt:
-        new Date()
-          .toISOString(),
-
-      pending:
-        0,
-
-      due:
-        0,
-
-      checked:
-        0,
-
-      finished:
-        0,
-
-      waiting:
-        0,
-
-      results:[]
-    };
-  }
-
-  const today =
-    todayJST();
-
-  const deadlineMap =
-    await makeTodayDeadlineMap(
-      pending
-    );
-
-  const now =
-    Date.now();
-
-  const due = [];
-
-  let waiting = 0;
-
-  for (
-    const row of
-    pending
-  ) {
-    const raceDate =
-      String(
-        row.race_date
-      );
-
-    /*
-      昨日以前の未確定レースは
-      そのまま結果確認対象
-    */
-
-    if (
-      raceDate < today
-    ) {
-      due.push(
-        row
-      );
-
-      continue;
-    }
-
-    /*
-      今日のレースは
-      締切5分後から結果確認
-    */
-
-    const deadlineJST =
-      deadlineMap.get(
-        row.race_key
-      );
-
-    if (
-      !deadlineJST
-    ) {
-      waiting++;
-
-      continue;
-    }
-
-    const deadlineMs =
-      new Date(
-        deadlineJST
-      ).getTime();
-
-    if (
-      !Number.isFinite(
-        deadlineMs
-      )
-    ) {
-      waiting++;
-
-      continue;
-    }
-
-    if (
-      now <
-      deadlineMs +
-      5 * 60000
-    ) {
-      waiting++;
-
-      continue;
-    }
-
-    due.push(
-      row
-    );
-  }
-
-  const output = [];
-
-  let checked = 0;
-  let finished = 0;
-
-  /*
-    1回のCronで最大8R
-    公式サイトへのアクセス集中を防止
-  */
-
-  for (
-    const row of
-    due.slice(
-      0,
-      8
-    )
-  ) {
-    checked++;
-
-    try {
-      const raceResult =
-        await resultData(
-          String(
-            row.race_date
-          ),
-
-          String(
-            row.jcd
-          ).padStart(
-            2,
-            "0"
-          ),
-
-          Number(
-            row.rno
-          )
-        );
-
-      if (
-        !raceResult.finished
-      ) {
-        output.push({
-          raceKey:
-            row.race_key,
-
-          venue:
-            row.venue,
-
-          rno:
-            row.rno,
-
-          status:
-            "WAIT_RESULT"
-        });
-
-        continue;
-      }
-
-      /*
-        learning_racesへ結果保存
-        finished=1
-      */
-
-      await saveLearningRace(
-        env,
-        {
-          race_date:
-            String(
-              row.race_date
-            ),
-
-          jcd:
-            String(
-              row.jcd
-            ).padStart(
-              2,
-              "0"
-            ),
-
-          venue:
-            row.venue,
-
-          rno:
-            Number(
-              row.rno
-            ),
-
-          result:
-            raceResult,
-
-          finished:
-            true
-        }
-      );
-
-      /*
-        S評価でpredictionsにも
-        保存されている場合は
-        的中判定も追加
-      */
-
-      const predictionCheck =
-        await updatePredictionResult(
-          env,
-          row.race_key,
-          raceResult
-        );
-
-      finished++;
-
-      output.push({
-        raceKey:
-          row.race_key,
-
-        venue:
-          row.venue,
-
-        rno:
-          row.rno,
-
-        status:
-          "FINISHED",
-
-        combination:
-          raceResult.combination,
-
-        payout:
-          raceResult.payout,
-
-        ...predictionCheck
-      });
-
-    } catch (
-      error
-    ) {
-      output.push({
-        raceKey:
-          row.race_key,
-
-        venue:
-          row.venue,
-
-        rno:
-          row.rno,
-
-        status:
-          "ERROR",
-
-        error:
-          error?.message ||
-          String(
-            error
-          )
-      });
-    }
-  }
-
-  return {
-    ok:true,
-
-    checkedAt:
-      new Date()
-        .toISOString(),
-
-    pending:
-      pending.length,
-
-    due:
-      due.length,
-
-    checked,
-
-    finished,
-
-    waiting,
-
-    remainingDue:
-      Math.max(
-        0,
-        due.length -
-        checked
-      ),
-
-    results:
-      output
-  };
-}
-
-
-/* =========================================================
-   既存のrunAutoWindowへ結果更新を接続
-
-   これにより既存scheduled()を
-   書き換えなくても、
-
-   5分Cron
-   ↓
-   自動予想
-   ↓
-   結果自動確認
-   ↓
-   D1更新
-
-   が連続して動く
-========================================================= */
-
-const runAutoWindowBeforeResultUpdate =
-  runAutoWindow;
-
-runAutoWindow =
-  async function(
-    env,
-    options = {}
-  ) {
-    const autoResult =
-      await runAutoWindowBeforeResultUpdate(
-        env,
-        options
-      );
-
-    let resultUpdate;
-
-    try {
-      resultUpdate =
-        await runResultUpdates(
-          env
-        );
-
-    } catch (
-      error
-    ) {
-      console.error(
-        "結果自動更新エラー",
-        error
-      );
-
-      resultUpdate = {
-        ok:false,
-
-        error:
-          error?.message ||
-          String(
-            error
-          )
-      };
-    }
-
-    return {
-      ...autoResult,
-
-      resultUpdate
-    };
-  };
-       
-/* ===== V6.4.2 自動処理ログ ===== */
-
-const runAutoWindowDebug =
-  runAutoWindow;
-
-runAutoWindow =
-  async function(
-    env,
-    options = {}
-  ) {
-    const result =
-      await runAutoWindowDebug(
-        env,
-        options
-      );
-
-    console.log(
-      "USA_LAB_AUTO_RESULT",
-      JSON.stringify(result)
-    );
-
-    return result;
-  };
+};
