@@ -1,11 +1,11 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.4";
-// V654 DEPLOY TRIGGER
+const WORKER_VERSION = "6.5.5";
 const AI_VERSION = "6.6.12";
 
 const AUTO_MIN_MINUTES = 10;
-const AUTO_MAX_MINUTES = 35;
+const AUTO_MAX_MINUTES = 50;
+const LINE_FINAL_MAX_MINUTES = 35;
 
 /* =========================
    共通
@@ -5908,7 +5908,7 @@ async function mapChunks(
 }
 
 /* =========================
-   締切25〜35分前を探す
+   締切10〜50分前を探す
 ========================= */
 
 async function findAutoTargets(
@@ -7420,7 +7420,7 @@ async function runResultUpdates(env) {
 
 
 /* =========================================================
-   LINE自動通知 V6.5.4
+   LINE自動通知 V6.5.5
    - 当日の保存済み「🔥 S勝負」を毎回D1から再確認
    - race_keyで重複送信を防止
    - 送信失敗は次回Cronで再試行
@@ -7571,6 +7571,105 @@ https://aged-hill-9a89.kono032424.workers.dev/api/s-picks-view
 ※的中や利益を保証するものではありません。`;
 }
 
+function buildLineSPassMessage(pick) {
+  const share =
+    pick.firstShare == null
+      ? "-"
+      : `${(Number(pick.firstShare) * 100).toFixed(1)}%`;
+
+  const top6 =
+    pick.top6Probability == null
+      ? "-"
+      : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
+
+  const reasons =
+    Array.isArray(pick.reasons) &&
+    pick.reasons.length
+      ? pick.reasons
+          .slice(0, 4)
+          .map(
+            reason =>
+              `・${reason}`
+          )
+          .join("\n")
+      : "・S勝負基準に届かなかったため";
+
+  return `🐰🚤 うさLAB｜競艇AI予想
+
+⚠️ S評価・見送り
+${pick.venue} ${pick.rno}R
+締切：${pick.deadline || "-"}
+信頼度：${pick.stars || "-"}
+Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
+1着推定力：${share}
+上位6点確率：${top6}
+戦略：${pick.strategy || "-"}
+
+【見送り理由】
+${reasons}
+
+今回は舟券購入を見送る判定です。
+
+※的中や利益を保証するものではありません。`;
+}
+
+function buildLineEarlyMessage(pick) {
+  const share =
+    pick.firstShare == null
+      ? "-"
+      : `${(Number(pick.firstShare) * 100).toFixed(1)}%`;
+
+  const top6 =
+    pick.top6Probability == null
+      ? "-"
+      : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
+
+  const current =
+    pick.decision === "BET"
+      ? "🔥 S勝負"
+      : "⚠️ S見送り";
+
+  return `🐰🚤 うさLAB｜競艇AI予想
+
+🟡 S判定を早めに検出
+${pick.venue} ${pick.rno}R
+締切：${pick.deadline || "-"}
+現時点判定：${current}
+信頼度：${pick.stars || "-"}
+Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
+1着推定力：${share}
+上位6点確率：${top6}
+戦略：${pick.strategy || "-"}
+
+締切35分以内になったら、
+🔥 S勝負 / ⚠️ S見送り の最終LINEをもう一度送ります。
+
+※オッズ・直前情報の変化により内容が変わる場合があります。`;
+}
+
+function lineNotificationKey(
+  pick,
+  stage
+) {
+  if (
+    stage === "EARLY"
+  ) {
+    return `EARLY:${pick.raceKey}`;
+  }
+
+  if (
+    pick.decision === "PASS"
+  ) {
+    return `PASS:${pick.raceKey}`;
+  }
+
+  /*
+    S勝負はV6.5.4までの送信履歴を
+    そのまま引き継ぐためraceKeyを使用。
+  */
+  return pick.raceKey;
+}
+
 async function saveLineNotificationState(
   env,
   pick,
@@ -7609,7 +7708,8 @@ async function saveLineNotificationState(
         updated_at=CURRENT_TIMESTAMP
     `)
     .bind(
-      pick.raceKey,
+      pick.notificationKey ||
+        pick.raceKey,
       pick.raceDate,
       pick.jcd || null,
       pick.venue || null,
@@ -7684,6 +7784,159 @@ async function listLineNotificationStates(
   );
 }
 
+
+async function listSLinePredictions(
+  env,
+  raceDate
+) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          race_date,
+          jcd,
+          venue,
+          rno,
+          deadline,
+          deadline_jst,
+          analyzed_at,
+          confidence,
+          decision,
+          stable_score,
+          strategy,
+          prediction_json,
+          updated_at
+
+        FROM predictions
+
+        WHERE race_date = ?
+          AND confidence = 'S'
+          AND decision IN ('BET', 'PASS')
+
+        ORDER BY
+          CASE
+            WHEN deadline_jst IS NULL THEN 1
+            ELSE 0
+          END ASC,
+          deadline_jst ASC,
+          rno ASC
+      `)
+      .bind(
+        raceDate
+      )
+      .all();
+
+  return (
+    result.results || []
+  ).map(
+    row => {
+      const snapshot =
+        parseJsonSafe(
+          row.prediction_json,
+          {}
+        ) || {};
+
+      const main6 =
+        Array.isArray(
+          snapshot.bets
+        )
+          ? snapshot.bets
+              .slice(0, 6)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+                  totalScore:
+                    bet.totalScore ?? null,
+                  odds:
+                    bet.odds ?? null,
+                  probability:
+                    bet.probability ?? null
+                })
+              )
+          : [];
+
+      const holes =
+        Array.isArray(
+          snapshot.holeBets
+        )
+          ? snapshot.holeBets
+              .slice(0, 5)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+                  odds:
+                    bet.odds ?? null,
+                  holeScore:
+                    bet.holeScore ?? null,
+                  tier:
+                    bet.tier?.label || null
+                })
+              )
+          : [];
+
+      return {
+        raceKey:
+          row.race_key,
+        raceDate:
+          row.race_date,
+        jcd:
+          row.jcd,
+        venue:
+          row.venue,
+        rno:
+          Number(
+            row.rno
+          ),
+        deadline:
+          row.deadline,
+        deadlineJST:
+          row.deadline_jst,
+        analyzedAt:
+          row.analyzed_at,
+        confidence:
+          row.confidence,
+        decision:
+          row.decision,
+        stableScore:
+          row.stable_score,
+        strategy:
+          row.strategy,
+        stars:
+          confidenceStars(
+            snapshot
+          ),
+        firstShare:
+          snapshot.sDecision
+            ?.metrics
+            ?.firstShare ?? null,
+        top6Probability:
+          snapshot.sDecision
+            ?.metrics
+            ?.top6Probability ?? null,
+        firstGap:
+          snapshot.sDecision
+            ?.metrics
+            ?.firstGap ?? null,
+        reasons:
+          Array.isArray(
+            snapshot.sDecision
+              ?.reasons
+          )
+            ? snapshot.sDecision
+                .reasons
+            : [],
+        main6,
+        holes,
+        updatedAt:
+          row.updated_at
+      };
+    }
+  );
+}
+
 async function runLineNotifications(
   env,
   raceDate = todayJST()
@@ -7698,6 +7951,9 @@ async function runLineNotifications(
       configured:false,
       candidates:0,
       sent:0,
+      earlySent:0,
+      sBetSent:0,
+      sPassSent:0,
       skipped:0,
       failed:0,
       expired:0,
@@ -7708,14 +7964,15 @@ async function runLineNotifications(
   }
 
   /*
-    V6.5.4:
-    「今回のCronで新しく分析したレース」ではなく、
-    D1に保存済みの当日S勝負を毎回すべて確認する。
-    これにより、先にD1へ保存されたレースや
-    13件目以降のS勝負も通知対象になる。
+    V6.5.5:
+    - S勝負だけでなくS見送りも対象
+    - 35〜50分前は「早め通知」
+    - 35分以内は最終通知
+    - 同じレースでも早め通知と最終通知は別管理
+    - S勝負の既存送信履歴はV6.5.4から引き継ぐ
   */
   const picks =
-    await listSBetPredictions(
+    await listSLinePredictions(
       env,
       raceDate
     );
@@ -7727,6 +7984,9 @@ async function runLineNotifications(
     );
 
   let sent = 0;
+  let earlySent = 0;
+  let sBetSent = 0;
+  let sPassSent = 0;
   let skipped = 0;
   let failed = 0;
   let expired = 0;
@@ -7736,9 +7996,126 @@ async function runLineNotifications(
   for (
     const pick of picks
   ) {
+    let minutesUntil =
+      null;
+
+    if (pick.deadlineJST) {
+      const deadlineMs =
+        new Date(
+          pick.deadlineJST
+        ).getTime();
+
+      if (
+        Number.isFinite(
+          deadlineMs
+        )
+      ) {
+        minutesUntil =
+          (
+            deadlineMs -
+            now
+          )
+          /
+          60000;
+      }
+    }
+
+    /*
+      締切後は最終通知だけEXPIREDとして記録。
+      早め通知の有無は問わない。
+    */
+    if (
+      minutesUntil !== null
+      &&
+      minutesUntil <= 0
+    ) {
+      const finalKey =
+        lineNotificationKey(
+          pick,
+          "FINAL"
+        );
+
+      const existing =
+        stateMap.get(
+          finalKey
+        );
+
+      if (
+        existing?.status !== "SENT"
+        &&
+        existing?.status !== "EXPIRED"
+      ) {
+        const message =
+          pick.decision === "PASS"
+            ? buildLineSPassMessage(
+                pick
+              )
+            : buildLineSBetMessage(
+                pick
+              );
+
+        const statePick = {
+          ...pick,
+          notificationKey:
+            finalKey
+        };
+
+        await saveLineNotificationState(
+          env,
+          statePick,
+          "EXPIRED",
+          message,
+          "締切後のため通知しませんでした"
+        );
+
+        stateMap.set(
+          finalKey,
+          {
+            race_key:
+              finalKey,
+            status:
+              "EXPIRED"
+          }
+        );
+
+        expired++;
+      }
+
+      skipped++;
+      continue;
+    }
+
+    /*
+      D1に手動保存された未来レースなど、
+      50分より前はまだ通知しない。
+    */
+    if (
+      minutesUntil !== null
+      &&
+      minutesUntil >
+        AUTO_MAX_MINUTES
+    ) {
+      skipped++;
+      continue;
+    }
+
+    const stage =
+      minutesUntil !== null
+      &&
+      minutesUntil >
+        LINE_FINAL_MAX_MINUTES
+        ? "EARLY"
+        : "FINAL";
+
+    const notificationKey =
+      lineNotificationKey(
+        pick,
+        stage
+      );
+
     const existing =
       stateMap.get(
-        pick.raceKey
+        notificationKey
       );
 
     if (
@@ -7749,53 +8126,23 @@ async function runLineNotifications(
       continue;
     }
 
-    if (pick.deadlineJST) {
-      const deadlineMs =
-        new Date(
-          pick.deadlineJST
-        ).getTime();
-
-      if (
-        Number.isFinite(deadlineMs) &&
-        now >= deadlineMs
-      ) {
-        const message =
-          buildLineSBetMessage(
-            pick
-          );
-
-        await saveLineNotificationState(
-          env,
-          pick,
-          "EXPIRED",
-          message,
-          "締切後のため通知しませんでした"
-        );
-
-        stateMap.set(
-          pick.raceKey,
-          {
-            race_key:pick.raceKey,
-            status:"EXPIRED"
-          }
-        );
-
-        expired++;
-        skipped++;
-        results.push({
-          raceKey:pick.raceKey,
-          venue:pick.venue,
-          rno:pick.rno,
-          status:"EXPIRED"
-        });
-        continue;
-      }
-    }
-
     const message =
-      buildLineSBetMessage(
-        pick
-      );
+      stage === "EARLY"
+        ? buildLineEarlyMessage(
+            pick
+          )
+        : pick.decision === "PASS"
+          ? buildLineSPassMessage(
+              pick
+            )
+          : buildLineSBetMessage(
+              pick
+            );
+
+    const statePick = {
+      ...pick,
+      notificationKey
+    };
 
     try {
       await sendLinePush(
@@ -7805,26 +8152,58 @@ async function runLineNotifications(
 
       await saveLineNotificationState(
         env,
-        pick,
+        statePick,
         "SENT",
         message,
         null
       );
 
       stateMap.set(
-        pick.raceKey,
+        notificationKey,
         {
-          race_key:pick.raceKey,
-          status:"SENT"
+          race_key:
+            notificationKey,
+          status:
+            "SENT"
         }
       );
 
       sent++;
+
+      if (
+        stage === "EARLY"
+      ) {
+        earlySent++;
+
+      } else if (
+        pick.decision === "PASS"
+      ) {
+        sPassSent++;
+
+      } else {
+        sBetSent++;
+      }
+
       results.push({
-        raceKey:pick.raceKey,
-        venue:pick.venue,
-        rno:pick.rno,
-        status:"SENT"
+        raceKey:
+          pick.raceKey,
+        notificationKey,
+        venue:
+          pick.venue,
+        rno:
+          pick.rno,
+        decision:
+          pick.decision,
+        stage,
+        minutesUntil:
+          minutesUntil === null
+            ? null
+            : Math.round(
+                minutesUntil *
+                10
+              ) / 10,
+        status:
+          "SENT"
       });
 
     } catch (error) {
@@ -7836,27 +8215,39 @@ async function runLineNotifications(
 
       await saveLineNotificationState(
         env,
-        pick,
+        statePick,
         "ERROR",
         message,
         errorText
       );
 
       stateMap.set(
-        pick.raceKey,
+        notificationKey,
         {
-          race_key:pick.raceKey,
-          status:"ERROR",
-          error_text:errorText
+          race_key:
+            notificationKey,
+          status:
+            "ERROR",
+          error_text:
+            errorText
         }
       );
 
       results.push({
-        raceKey:pick.raceKey,
-        venue:pick.venue,
-        rno:pick.rno,
-        status:"ERROR",
-        error:errorText
+        raceKey:
+          pick.raceKey,
+        notificationKey,
+        venue:
+          pick.venue,
+        rno:
+          pick.rno,
+        decision:
+          pick.decision,
+        stage,
+        status:
+          "ERROR",
+        error:
+          errorText
       });
     }
   }
@@ -7868,6 +8259,9 @@ async function runLineNotifications(
     candidates:
       picks.length,
     sent,
+    earlySent,
+    sBetSent,
+    sPassSent,
     skipped,
     failed,
     expired,
@@ -7887,6 +8281,12 @@ function compactLineNotification(result) {
       Number(result.candidates || 0),
     sent:
       Number(result.sent || 0),
+    earlySent:
+      Number(result.earlySent || 0),
+    sBetSent:
+      Number(result.sBetSent || 0),
+    sPassSent:
+      Number(result.sPassSent || 0),
     skipped:
       Number(result.skipped || 0),
     failed:
@@ -8012,6 +8412,9 @@ async function runScheduledAutomation(
         lineNotificationConfigured(env),
       candidates:0,
       sent:0,
+      earlySent:0,
+      sBetSent:0,
+      sPassSent:0,
       skipped:0,
       failed:1,
       errors:[
@@ -8179,6 +8582,9 @@ async function automationStatus(env) {
       .prepare(`
         SELECT
           SUM(CASE WHEN status='SENT' THEN 1 ELSE 0 END) AS sent_count,
+          SUM(CASE WHEN status='SENT' AND race_key LIKE 'EARLY:%' THEN 1 ELSE 0 END) AS early_sent_count,
+          SUM(CASE WHEN status='SENT' AND race_key LIKE 'PASS:%' THEN 1 ELSE 0 END) AS pass_sent_count,
+          SUM(CASE WHEN status='SENT' AND race_key NOT LIKE 'EARLY:%' AND race_key NOT LIKE 'PASS:%' THEN 1 ELSE 0 END) AS bet_sent_count,
           SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) AS error_count
         FROM line_notifications
         WHERE race_date = ?
@@ -8214,6 +8620,21 @@ async function automationStatus(env) {
       todaySent:
         Number(
           lineToday?.sent_count ||
+          0
+        ),
+      todayEarlySent:
+        Number(
+          lineToday?.early_sent_count ||
+          0
+        ),
+      todaySBetSent:
+        Number(
+          lineToday?.bet_sent_count ||
+          0
+        ),
+      todaySPassSent:
+        Number(
+          lineToday?.pass_sent_count ||
           0
         ),
       todayErrors:
@@ -8427,7 +8848,7 @@ async function listSBetPredictions(
 
 
 /* =========================================================
-   V6.5.4 D1自動成績集計
+   V6.5.5 D1自動成績集計
    - ブラウザlocalStorageではなくD1を正本にする
    - 自動分析したS/A/Bの結果確定レースを集計
    - 本線6点 / 上位15点 / 穴候補 / S勝負 / ★★★★★
@@ -9204,6 +9625,15 @@ export default {
 
           lineNotificationBackfill:
             true,
+
+          lineSPassNotification:
+            true,
+
+          lineEarlyNotification:
+            true,
+
+          lineEarlyWindow:
+            `${LINE_FINAL_MAX_MINUTES}-${AUTO_MAX_MINUTES}min`,
 
           d1PerformanceStats:
             true
