@@ -1,6 +1,6 @@
 {
   "name": "aged-hill-9a89",
-  "main": "src/index_v6.5.3_line_notify_complete.js",
+      "main": "src/index.js",
   "compatibility_date": "2026-09-02",
 
   "keep_vars": true,
