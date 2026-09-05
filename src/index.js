@@ -8010,3 +8010,26 @@ runAutoWindow =
     };
   };
        
+/* ===== V6.4.2 自動処理ログ ===== */
+
+const runAutoWindowDebug =
+  runAutoWindow;
+
+runAutoWindow =
+  async function(
+    env,
+    options = {}
+  ) {
+    const result =
+      await runAutoWindowDebug(
+        env,
+        options
+      );
+
+    console.log(
+      "USA_LAB_AUTO_RESULT",
+      JSON.stringify(result)
+    );
+
+    return result;
+  };
