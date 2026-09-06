@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.5";
+const WORKER_VERSION = "6.5.6";
 const AI_VERSION = "6.6.12";
 
 const AUTO_MIN_MINUTES = 10;
@@ -8655,14 +8655,23 @@ async function automationStatus(env) {
 
 
 /* =========================
-   S勝負ダッシュボード
-   V6.5.1
+   S評価ダッシュボード
+   V6.5.6
+   - 🔥 S勝負 + ⚠️ S見送りを同じ一覧に表示
+   - フィルタ切替
+   - 見送り本線 / 見送り穴の結果を区別
 ========================= */
 
 async function listSBetPredictions(
   env,
-  raceDate
+  raceDate,
+  includePass = false
 ) {
+  const decisionCondition =
+    includePass
+      ? "AND decision IN ('BET', 'PASS')"
+      : "AND decision = 'BET'";
+
   const result =
     await env.DB
       .prepare(`
@@ -8689,7 +8698,7 @@ async function listSBetPredictions(
 
         WHERE race_date = ?
           AND confidence = 'S'
-          AND decision = 'BET'
+          ${decisionCondition}
 
         ORDER BY
           CASE
@@ -8819,6 +8828,15 @@ async function listSBetPredictions(
             ?.metrics
             ?.firstGap ?? null,
 
+        reasons:
+          Array.isArray(
+            snapshot.sDecision
+              ?.reasons
+          )
+            ? snapshot.sDecision
+                .reasons
+            : [],
+
         main6,
         holes,
 
@@ -8848,10 +8866,11 @@ async function listSBetPredictions(
 
 
 /* =========================================================
-   V6.5.5 D1自動成績集計
+   V6.5.6 D1自動成績集計
    - ブラウザlocalStorageではなくD1を正本にする
    - 自動分析したS/A/Bの結果確定レースを集計
-   - 本線6点 / 上位15点 / 穴候補 / S勝負 / ★★★★★
+   - 本線6点 / 穴候補 / S勝負 / S見送り / ★★★★★
+   - S見送りは本線的中と穴的中を分けて集計
 ========================================================= */
 
 function blankPerformanceBucket() {
@@ -8861,9 +8880,17 @@ function blankPerformanceBucket() {
     main15Hits:0,
     holeHits:0,
     candidateHits:0,
+
     sBetRaces:0,
     sBetMain6Hits:0,
+    sBetHoleHits:0,
     sBetCandidateHits:0,
+
+    sPassRaces:0,
+    sPassMain6Hits:0,
+    sPassHoleHits:0,
+    sPassCandidateHits:0,
+
     fiveStarRaces:0,
     fiveStarMain6Hits:0,
     fiveStarCandidateHits:0
@@ -8915,10 +8942,34 @@ function finalizePerformanceBucket(
         bucket.sBetRaces
       ),
 
+    sBetHoleHitRate:
+      performanceRate(
+        bucket.sBetHoleHits,
+        bucket.sBetRaces
+      ),
+
     sBetCandidateHitRate:
       performanceRate(
         bucket.sBetCandidateHits,
         bucket.sBetRaces
+      ),
+
+    sPassMain6HitRate:
+      performanceRate(
+        bucket.sPassMain6Hits,
+        bucket.sPassRaces
+      ),
+
+    sPassHoleHitRate:
+      performanceRate(
+        bucket.sPassHoleHits,
+        bucket.sPassRaces
+      ),
+
+    sPassCandidateHitRate:
+      performanceRate(
+        bucket.sPassCandidateHits,
+        bucket.sPassRaces
       ),
 
     fiveStarMain6HitRate:
@@ -9005,9 +9056,20 @@ function addPerformanceResult(
     main6Hit ||
     holeHit;
 
+  const isS =
+    snapshot?.confidence === "S";
+
+  const decision =
+    snapshot?.sDecision?.status ||
+    null;
+
   const isSBet =
-    snapshot?.confidence === "S" &&
-    snapshot?.sDecision?.status === "BET";
+    isS &&
+    decision === "BET";
+
+  const isSPass =
+    isS &&
+    decision === "PASS";
 
   const isFiveStar =
     isSBet &&
@@ -9041,8 +9103,28 @@ function addPerformanceResult(
       bucket.sBetMain6Hits++;
     }
 
+    if (holeHit) {
+      bucket.sBetHoleHits++;
+    }
+
     if (candidateHit) {
       bucket.sBetCandidateHits++;
+    }
+  }
+
+  if (isSPass) {
+    bucket.sPassRaces++;
+
+    if (main6Hit) {
+      bucket.sPassMain6Hits++;
+    }
+
+    if (holeHit) {
+      bucket.sPassHoleHits++;
+    }
+
+    if (candidateHit) {
+      bucket.sPassCandidateHits++;
     }
   }
 
@@ -9060,6 +9142,7 @@ function addPerformanceResult(
 
   return true;
 }
+
 
 async function performanceOverview(env) {
   const result =
@@ -9199,7 +9282,7 @@ function sPicksDashboardHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#8d72c7">
-<title>うさLAB｜S勝負一覧</title>
+<title>うさLAB｜S勝負・S見送り一覧</title>
 <style>
   :root{
     color-scheme:light;
@@ -9212,7 +9295,9 @@ function sPicksDashboardHtml() {
     --accent2:#efe7ff;
     --hot:#f25772;
     --ok:#2d9c6d;
-    --warn:#b98224;
+    --warn:#a46b20;
+    --pass:#756d87;
+    --passbg:#f3f0f8;
   }
   *{box-sizing:border-box}
   body{
@@ -9241,6 +9326,9 @@ function sPicksDashboardHtml() {
   input{background:#fff;padding:11px 12px;min-width:0;flex:1}
   button{padding:11px 14px;background:var(--accent);color:#fff;font-weight:700;border-color:var(--accent);cursor:pointer}
   button.secondary{background:#fff;color:var(--accent)}
+  .filterBar{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
+  .filterBtn{background:#fff;color:var(--accent);border-color:var(--line);font-size:13px;padding:9px 12px}
+  .filterBtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
   .status{margin:14px 2px 0;font-size:13px;color:var(--muted)}
   .summary{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap}
   .pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 11px;font-size:13px}
@@ -9249,7 +9337,9 @@ function sPicksDashboardHtml() {
   .perfCard h3{font-size:14px;margin:0 0 8px}
   .perfBig{font-size:20px;font-weight:900;color:var(--accent)}
   .perfRow{display:flex;justify-content:space-between;gap:8px;margin-top:5px;font-size:12px;color:var(--muted)}
-  .perfRow b{color:var(--ink)}
+  .perfRow b{color:var(--ink);text-align:right}
+  .perfRow.passRow span{color:var(--pass)}
+  .perfRow.holeRow span{color:var(--warn)}
   .perfNote{grid-column:1/-1;font-size:11px;color:var(--muted);padding:0 2px}
   .grid{display:grid;gap:14px}
   .card{
@@ -9259,13 +9349,17 @@ function sPicksDashboardHtml() {
     overflow:hidden;
     box-shadow:0 8px 24px rgba(71,46,113,.06);
   }
+  .card.pass{border-color:#d9d1e5}
   .cardHead{padding:15px 16px 12px;background:linear-gradient(135deg,#fff,#faf6ff);border-bottom:1px solid var(--line)}
+  .card.pass .cardHead{background:linear-gradient(135deg,#fff,#f6f3fa)}
   .raceLine{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .race{font-size:21px;font-weight:800}
   .badge{font-size:13px;font-weight:800;color:#fff;background:var(--hot);border-radius:999px;padding:7px 10px;white-space:nowrap}
+  .badge.pass{background:var(--pass)}
   .meta{margin-top:7px;color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
   .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px}
   .metric{background:var(--accent2);border-radius:12px;padding:10px;text-align:center}
+  .card.pass .metric{background:var(--passbg)}
   .metric b{display:block;font-size:17px;margin-top:2px}
   .label{font-size:11px;color:var(--muted)}
   .section{padding:4px 16px 14px}
@@ -9277,7 +9371,9 @@ function sPicksDashboardHtml() {
   .hole{background:#fff6ed;border:1px solid #f5dcc3;border-radius:999px;padding:7px 9px;font-size:12px}
   .result{margin:0 16px 14px;border-radius:12px;padding:10px 12px;font-weight:700}
   .result.hit{background:#eaf8f1;color:var(--ok)}
+  .result.holehit{background:#fff7e8;color:#9a6317}
   .result.miss{background:#fff1f3;color:#c14d62}
+  .reasonBox{margin:0 16px 14px;background:#f5f2f9;color:var(--pass);border-radius:12px;padding:9px 11px;font-size:12px;line-height:1.55}
   .actions{display:flex;gap:8px;padding:0 16px 16px}
   .actions button{flex:1;padding:10px 9px;font-size:13px}
   .empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:32px 16px;text-align:center;color:var(--muted)}
@@ -9294,13 +9390,18 @@ function sPicksDashboardHtml() {
 <body>
 <div class="wrap">
   <div class="hero">
-    <h1>🐰🚤 うさLAB｜S勝負一覧</h1>
-    <div class="sub">今日の「🔥 S勝負」だけを自動表示。1分ごとに更新します。予想内容は認証後だけ表示されます。</div>
+    <h1>🐰🚤 うさLAB｜S評価一覧</h1>
+    <div class="sub">今日の「🔥 S勝負」と「⚠️ S見送り」を同じ画面で自動表示。結果確定後は、本線的中・穴的中も区別して表示します。</div>
     <div class="controls">
       <input id="token" type="password" placeholder="D1_WRITE_TOKEN">
       <button id="save">認証して表示</button>
       <button id="refresh" class="secondary">更新</button>
       <button id="lineTest" class="secondary">LINEテスト</button>
+    </div>
+    <div class="filterBar">
+      <button class="filterBtn active" data-filter="ALL">全部</button>
+      <button class="filterBtn" data-filter="BET">🔥 S勝負</button>
+      <button class="filterBtn" data-filter="PASS">⚠️ S見送り</button>
     </div>
     <div id="status" class="status">読み込み待ち</div>
   </div>
@@ -9318,6 +9419,8 @@ function sPicksDashboardHtml() {
   var status = document.getElementById("status");
   var summary = document.getElementById("summary");
   var performance = document.getElementById("performance");
+  var currentData = null;
+  var currentFilter = "ALL";
 
   function esc(v){
     return String(v == null ? "" : v)
@@ -9377,8 +9480,15 @@ function sPicksDashboardHtml() {
       var races = Number(s.races || 0);
       var main6 = Number(s.main6Hits || 0);
       var candidate = Number(s.candidateHits || 0);
+
       var sRaces = Number(s.sBetRaces || 0);
       var sHits = Number(s.sBetMain6Hits || 0);
+
+      var passRaces = Number(s.sPassRaces || 0);
+      var passMain = Number(s.sPassMain6Hits || 0);
+      var passHole = Number(s.sPassHoleHits || 0);
+      var passCandidate = Number(s.sPassCandidateHits || 0);
+
       var fiveRaces = Number(s.fiveStarRaces || 0);
       var fiveHits = Number(s.fiveStarMain6Hits || 0);
 
@@ -9388,24 +9498,45 @@ function sPicksDashboardHtml() {
         '<div class="perfRow"><span>本線6点</span><b>' + main6 + '/' + races + '（' + rateText(s.main6HitRate) + '）</b></div>' +
         '<div class="perfRow"><span>本線6点＋穴</span><b>' + candidate + '/' + races + '（' + rateText(s.candidateHitRate) + '）</b></div>' +
         '<div class="perfRow"><span>🔥S勝負 本線6点</span><b>' + sHits + '/' + sRaces + '（' + rateText(s.sBetMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow passRow"><span>⚠️S見送り 本線6点</span><b>' + passMain + '/' + passRaces + '（' + rateText(s.sPassMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow holeRow"><span>🎯S見送り 穴</span><b>' + passHole + '/' + passRaces + '（' + rateText(s.sPassHoleHitRate) + '）</b></div>' +
+        '<div class="perfRow passRow"><span>⚠️S見送り 本線＋穴</span><b>' + passCandidate + '/' + passRaces + '（' + rateText(s.sPassCandidateHitRate) + '）</b></div>' +
         '<div class="perfRow"><span>★★★★★ 本線6点</span><b>' + fiveHits + '/' + fiveRaces + '（' + rateText(s.fiveStarMain6HitRate) + '）</b></div>' +
       '</div>';
     }).join('') +
-      '<div class="perfNote">※自動分析→D1保存→結果取得済みのレースだけを集計。回収率は実購入額を保存していないため表示していません。</div>';
+      '<div class="perfNote">※自動分析→D1保存→結果取得済みのレースだけを集計。S見送りは本線的中と穴的中を別々に集計しています。回収率は実購入額を保存していないため表示していません。</div>';
   }
 
   function render(data){
-    var picks = data.picks || [];
+    currentData = data || currentData || {picks:[]};
+
+    var allPicks = currentData.picks || [];
+    var betCount = allPicks.filter(function(p){ return p.decision === "BET"; }).length;
+    var passCount = allPicks.filter(function(p){ return p.decision === "PASS"; }).length;
+
+    var picks = allPicks.filter(function(p){
+      return currentFilter === "ALL" || p.decision === currentFilter;
+    });
+
     summary.innerHTML =
-      '<span class="pill">🔥 S勝負 <b>' + picks.length + 'R</b></span>' +
+      '<span class="pill">全部 <b>' + allPicks.length + 'R</b></span>' +
+      '<span class="pill">🔥 S勝負 <b>' + betCount + 'R</b></span>' +
+      '<span class="pill">⚠️ S見送り <b>' + passCount + 'R</b></span>' +
       '<span class="pill">更新 ' + esc(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})) + '</span>';
 
     if(!picks.length){
-      list.innerHTML = '<div class="empty">現在、今日の🔥 S勝負はありません。</div>';
+      var emptyText = currentFilter === "BET"
+        ? "現在、今日の🔥 S勝負はありません。"
+        : currentFilter === "PASS"
+          ? "現在、今日の⚠️ S見送りはありません。"
+          : "現在、今日のS評価レースはありません。";
+      list.innerHTML = '<div class="empty">' + emptyText + '</div>';
       return;
     }
 
     list.innerHTML = picks.map(function(p){
+      var isPass = p.decision === "PASS";
+
       var main = (p.main6 || []).map(function(b,i){
         return '<div class="bet">' + (i+1) + '. ' + esc(b.combination) +
           '<small>AI ' + esc(fmtScore(b.totalScore)) + ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</small></div>';
@@ -9420,25 +9551,53 @@ function sPicksDashboardHtml() {
       if(p.resultCheck){
         var rc = p.resultCheck || {};
         var candidateHit = !!rc.main6Hit || !!rc.holeHit;
-        var label = rc.main6Hit
-          ? '✅ 本線6点的中'
-          : rc.holeHit
-            ? '✅ 穴候補的中'
-            : rc.main15Hit
-              ? '参考：上位15点内'
-              : '❌ 本線6点・穴候補外';
-        result = '<div class="result ' + (candidateHit ? 'hit' : 'miss') + '">' +
+
+        var label;
+        var resultClass;
+
+        if(isPass && rc.main6Hit){
+          label = '✅ S見送り 本線的中';
+          resultClass = 'hit';
+        }else if(isPass && rc.holeHit){
+          label = '🎯 S見送り 穴的中';
+          resultClass = 'holehit';
+        }else if(rc.main6Hit){
+          label = '✅ 本線6点的中';
+          resultClass = 'hit';
+        }else if(rc.holeHit){
+          label = '🎯 穴候補的中';
+          resultClass = 'holehit';
+        }else if(rc.main15Hit){
+          label = '参考：上位15点内';
+          resultClass = 'miss';
+        }else{
+          label = '❌ 本線6点・穴候補外';
+          resultClass = 'miss';
+        }
+
+        result = '<div class="result ' + resultClass + '">' +
           label + '：' + esc(rc.combination || '-') +
           (rc.payout != null ? ' / ' + esc(rc.payout) + '円' : '') + '</div>';
+      }
+
+      var reasons = '';
+      if(isPass && Array.isArray(p.reasons) && p.reasons.length){
+        reasons = '<div class="reasonBox"><b>見送り理由</b><br>' +
+          p.reasons.slice(0,4).map(function(r){ return '・' + esc(r); }).join('<br>') +
+          '</div>';
       }
 
       var picksText = (p.venue || '') + ' ' + p.rno + 'R\\n' +
         (p.main6 || []).map(function(b){ return b.combination; }).join('\\n');
 
-      return '<article class="card">' +
+      var badge = isPass
+        ? '<div class="badge pass">⚠️ S見送り ' + esc(p.stars || '') + '</div>'
+        : '<div class="badge">🔥 S勝負 ' + esc(p.stars || '') + '</div>';
+
+      return '<article class="card ' + (isPass ? 'pass' : '') + '">' +
         '<div class="cardHead">' +
           '<div class="raceLine"><div class="race">' + esc(p.venue) + ' ' + esc(p.rno) + 'R</div>' +
-          '<div class="badge">🔥 S勝負 ' + esc(p.stars || '') + '</div></div>' +
+          badge + '</div>' +
           '<div class="meta"><span>締切 ' + esc(p.deadline || '-') + '</span><span>' + esc(p.strategy || '-') + '</span><span>Sスコア ' + esc(fmtScore(p.stableScore)) + '</span></div>' +
         '</div>' +
         '<div class="metrics">' +
@@ -9448,6 +9607,7 @@ function sPicksDashboardHtml() {
         '</div>' +
         '<div class="section"><h3>本線6点</h3><div class="bets">' + main + '</div></div>' +
         (holes ? '<div class="section"><h3>穴候補</h3><div class="holes">' + holes + '</div></div>' : '') +
+        reasons +
         result +
         '<div class="actions">' +
           '<button class="secondary" data-copy-picks="' + esc(picksText) + '">買い目コピー</button>' +
@@ -9468,14 +9628,14 @@ function sPicksDashboardHtml() {
     var token = tokenInput.value.trim() || localStorage.getItem(TOKEN_KEY) || '';
     if(!token){
       status.textContent = 'トークンを入力してください';
-      list.innerHTML = '<div class="empty">認証後にS勝負を表示します。</div>';
+      list.innerHTML = '<div class="empty">認証後にS勝負・S見送りを表示します。</div>';
       return;
     }
 
     status.textContent = '読み込み中…';
 
     try{
-      var response = await fetch('/api/s-picks?date=' + encodeURIComponent(todayKey()),{
+      var response = await fetch('/api/s-picks?date=' + encodeURIComponent(todayKey()) + '&includePass=1',{
         headers:{'Authorization':'Bearer ' + token},
         cache:'no-store'
       });
@@ -9532,6 +9692,16 @@ function sPicksDashboardHtml() {
     }
   }
 
+  Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(btn){
+    btn.addEventListener('click',function(){
+      currentFilter = btn.getAttribute('data-filter') || 'ALL';
+      Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(other){
+        other.classList.toggle('active',other === btn);
+      });
+      render(currentData || {picks:[]});
+    });
+  });
+
   document.getElementById('save').addEventListener('click',load);
   document.getElementById('refresh').addEventListener('click',load);
   document.getElementById('lineTest').addEventListener('click',lineTest);
@@ -9543,6 +9713,7 @@ function sPicksDashboardHtml() {
 </body>
 </html>`;
 }
+
 
 /* =========================
    Worker
@@ -9615,6 +9786,9 @@ export default {
             true,
 
           sPicksDashboard:
+            true,
+
+          sPassDashboard:
             true,
 
           lineNotification:
@@ -9723,7 +9897,7 @@ export default {
 
 
 
-      /* ===== V6.5.4 自動成績 API ===== */
+      /* ===== V6.5.6 自動成績 API ===== */
 
       if (
         url.pathname ===
@@ -9749,7 +9923,7 @@ export default {
       }
 
 
-      /* ===== S勝負 API ===== */
+      /* ===== S評価 API（🔥S勝負 + ⚠️S見送り） ===== */
 
       if (
         url.pathname ===
@@ -9790,10 +9964,16 @@ export default {
           );
         }
 
+        const includePass =
+          url.searchParams.get(
+            "includePass"
+          ) === "1";
+
         const picks =
           await listSBetPredictions(
             env,
-            raceDate
+            raceDate,
+            includePass
           );
 
         return json({
@@ -9805,7 +9985,7 @@ export default {
         });
       }
 
-      /* ===== S勝負 画面 ===== */
+      /* ===== S評価一覧画面 ===== */
 
       if (
         url.pathname ===
