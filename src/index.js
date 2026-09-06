@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.6";
+const WORKER_VERSION = "6.5.7";
 const AI_VERSION = "6.6.12";
 
 const AUTO_MIN_MINUTES = 10;
@@ -8662,6 +8662,94 @@ async function automationStatus(env) {
    - 見送り本線 / 見送り穴の結果を区別
 ========================= */
 
+function resultCheckFromStoredResult(
+  snapshot,
+  raceResult
+) {
+  if (!raceResult) {
+    return null;
+  }
+
+  const combination =
+    raceResult.combination ||
+    (
+      Array.isArray(
+        raceResult.winningLanes
+      ) &&
+      raceResult.winningLanes.length >= 3
+        ? raceResult.winningLanes
+            .slice(0, 3)
+            .join("-")
+        : null
+    );
+
+  if (!combination) {
+    return null;
+  }
+
+  const main15 =
+    Array.isArray(
+      snapshot?.bets
+    )
+      ? snapshot.bets
+      : [];
+
+  const main6 =
+    main15.slice(
+      0,
+      6
+    );
+
+  const holes =
+    Array.isArray(
+      snapshot?.holeBets
+    )
+      ? snapshot.holeBets
+      : [];
+
+  const main6Hit =
+    main6.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const main15Hit =
+    main15.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const holeHit =
+    holes.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  return {
+    checkedAt:
+      raceResult.checkedAt ||
+      null,
+
+    combination,
+
+    payout:
+      raceResult.payout ??
+      null,
+
+    main6Hit,
+    main15Hit,
+    holeHit,
+
+    hit:
+      main6Hit ||
+      main15Hit ||
+      holeHit
+  };
+}
+
 async function listSBetPredictions(
   env,
   raceDate,
@@ -8669,44 +8757,49 @@ async function listSBetPredictions(
 ) {
   const decisionCondition =
     includePass
-      ? "AND decision IN ('BET', 'PASS')"
-      : "AND decision = 'BET'";
+      ? "AND p.decision IN ('BET', 'PASS')"
+      : "AND p.decision = 'BET'";
 
   const result =
     await env.DB
       .prepare(`
         SELECT
-          race_key,
-          race_date,
-          jcd,
-          venue,
-          rno,
-          deadline,
-          deadline_jst,
-          analyzed_at,
-          confidence,
-          decision,
-          stable_score,
-          strategy,
-          prediction_json,
-          note_title,
-          note_body,
-          posted,
-          updated_at
+          p.race_key,
+          p.race_date,
+          p.jcd,
+          p.venue,
+          p.rno,
+          p.deadline,
+          p.deadline_jst,
+          p.analyzed_at,
+          p.confidence,
+          p.decision,
+          p.stable_score,
+          p.strategy,
+          p.prediction_json,
+          p.note_title,
+          p.note_body,
+          p.posted,
+          p.updated_at,
+          lr.result_json AS learning_result_json,
+          lr.finished AS learning_finished
 
-        FROM predictions
+        FROM predictions p
 
-        WHERE race_date = ?
-          AND confidence = 'S'
+        LEFT JOIN learning_races lr
+          ON lr.race_key = p.race_key
+
+        WHERE p.race_date = ?
+          AND p.confidence = 'S'
           ${decisionCondition}
 
         ORDER BY
           CASE
-            WHEN deadline_jst IS NULL THEN 1
+            WHEN p.deadline_jst IS NULL THEN 1
             ELSE 0
           END ASC,
-          deadline_jst ASC,
-          rno ASC
+          p.deadline_jst ASC,
+          p.rno ASC
       `)
       .bind(
         raceDate
@@ -8768,6 +8861,30 @@ async function listSBetPredictions(
                 })
               )
           : [];
+
+      /*
+        V6.5.7:
+        predictions.prediction_json に resultCheck が無くても、
+        learning_races の確定結果をフォールバックとして使う。
+        これでS勝負 / S見送り一覧から結果表示が消えない。
+      */
+      const learningResult =
+        parseJsonSafe(
+          row.learning_result_json,
+          null
+        );
+
+      const storedResult =
+        snapshot.result ||
+        learningResult ||
+        null;
+
+      const storedResultCheck =
+        snapshot.resultCheck ||
+        resultCheckFromStoredResult(
+          snapshot,
+          storedResult
+        );
 
       return {
         raceKey:
@@ -8841,10 +8958,23 @@ async function listSBetPredictions(
         holes,
 
         result:
-          snapshot.result || null,
+          storedResult,
 
         resultCheck:
-          snapshot.resultCheck || null,
+          storedResultCheck,
+
+        resultSource:
+          snapshot.resultCheck
+            ? "prediction"
+            : storedResultCheck
+              ? "learning_races"
+              : null,
+
+        resultFinished:
+          Boolean(
+            row.learning_finished ||
+            storedResultCheck
+          ),
 
         noteTitle:
           row.note_title || null,
@@ -8864,9 +8994,8 @@ async function listSBetPredictions(
   );
 }
 
-
 /* =========================================================
-   V6.5.6 D1自動成績集計
+   V6.5.7 D1自動成績集計
    - ブラウザlocalStorageではなくD1を正本にする
    - 自動分析したS/A/Bの結果確定レースを集計
    - 本線6点 / 穴候補 / S勝負 / S見送り / ★★★★★
@@ -9810,6 +9939,9 @@ export default {
             `${LINE_FINAL_MAX_MINUTES}-${AUTO_MAX_MINUTES}min`,
 
           d1PerformanceStats:
+            true,
+
+          resultDisplayFallback:
             true
         });
       }
@@ -9897,7 +10029,7 @@ export default {
 
 
 
-      /* ===== V6.5.6 自動成績 API ===== */
+      /* ===== V6.5.7 自動成績 API ===== */
 
       if (
         url.pathname ===
