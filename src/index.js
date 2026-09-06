@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.7";
+const WORKER_VERSION = "6.5.8";
 const AI_VERSION = "6.6.12";
 
 const AUTO_MIN_MINUTES = 10;
@@ -7572,6 +7572,39 @@ https://aged-hill-9a89.kono032424.workers.dev/api/s-picks-view
 }
 
 function buildLineSPassMessage(pick) {
+  const main =
+    Array.isArray(pick.main6) &&
+    pick.main6.length
+      ? pick.main6
+          .slice(0, 6)
+          .map(
+            (bet, index) =>
+              `${index + 1}. ${bet.combination}` +
+              (bet.odds != null
+                ? `（${bet.odds}倍）`
+                : "")
+          )
+          .join("\n")
+      : "-";
+
+  const holes =
+    Array.isArray(pick.holes) &&
+    pick.holes.length
+      ? pick.holes
+          .slice(0, 5)
+          .map(
+            bet =>
+              `${bet.combination}` +
+              (bet.tier
+                ? `｜${bet.tier}`
+                : "") +
+              (bet.odds != null
+                ? `｜${bet.odds}倍`
+                : "")
+          )
+          .join("\n")
+      : "なし";
+
   const share =
     pick.firstShare == null
       ? "-"
@@ -7605,10 +7638,19 @@ Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed
 上位6点確率：${top6}
 戦略：${pick.strategy || "-"}
 
+【本線6点】
+${main}
+
+【穴候補】
+${holes}
+
 【見送り理由】
 ${reasons}
 
-今回は舟券購入を見送る判定です。
+⚠️ AI最終判定は見送りです。買い目は参考用として表示しています。
+
+S勝負・S見送り一覧
+https://aged-hill-9a89.kono032424.workers.dev/api/s-picks-view
 
 ※的中や利益を保証するものではありません。`;
 }
@@ -7785,6 +7827,120 @@ async function listLineNotificationStates(
 }
 
 
+/* =========================================================
+   V6.5.8 締切時刻フォールバック
+   - 旧データなどで predictions.deadline が空でも、公式レース一覧から補完
+   - 補完できた締切はD1へ書き戻し、次回以降の再取得を減らす
+========================================================= */
+async function hydratePredictionDeadlines(
+  env,
+  raceDate,
+  rows
+) {
+  const targets =
+    (rows || []).filter(
+      row =>
+        !row.deadline ||
+        !row.deadline_jst
+    );
+
+  if (!targets.length) {
+    return rows || [];
+  }
+
+  const venueCodes =
+    [...new Set(
+      targets
+        .map(row => String(row.jcd || "").padStart(2, "0"))
+        .filter(jcd => /^\d{2}$/.test(jcd))
+    )];
+
+  const venueMaps =
+    new Map();
+
+  for (const jcd of venueCodes) {
+    try {
+      const data =
+        await venueData(
+          raceDate,
+          jcd
+        );
+
+      venueMaps.set(
+        jcd,
+        new Map(
+          (data.races || []).map(
+            race => [
+              Number(race.rno),
+              race
+            ]
+          )
+        )
+      );
+    } catch (error) {
+      // 締切補完に失敗しても一覧・LINE自体は止めない。
+    }
+  }
+
+  for (const row of targets) {
+    const jcd =
+      String(row.jcd || "")
+        .padStart(2, "0");
+
+    const race =
+      venueMaps
+        .get(jcd)
+        ?.get(Number(row.rno));
+
+    if (!race) {
+      continue;
+    }
+
+    const deadline =
+      row.deadline ||
+      race.deadline ||
+      null;
+
+    const deadlineJST =
+      row.deadline_jst ||
+      race.deadlineJST ||
+      null;
+
+    row.deadline =
+      deadline;
+
+    row.deadline_jst =
+      deadlineJST;
+
+    if (
+      deadline ||
+      deadlineJST
+    ) {
+      try {
+        await env.DB
+          .prepare(`
+            UPDATE predictions
+            SET
+              deadline = COALESCE(?, deadline),
+              deadline_jst = COALESCE(?, deadline_jst),
+              updated_at = CURRENT_TIMESTAMP
+            WHERE race_key = ?
+          `)
+          .bind(
+            deadline,
+            deadlineJST,
+            row.race_key
+          )
+          .run();
+      } catch (error) {
+        // 表示には補完値を使えるので、DB書き戻し失敗は致命扱いにしない。
+      }
+    }
+  }
+
+  return rows || [];
+}
+
 async function listSLinePredictions(
   env,
   raceDate
@@ -7827,9 +7983,16 @@ async function listSLinePredictions(
       )
       .all();
 
-  return (
-    result.results || []
-  ).map(
+  const rows =
+    result.results || [];
+
+  await hydratePredictionDeadlines(
+    env,
+    raceDate,
+    rows
+  );
+
+  return rows.map(
     row => {
       const snapshot =
         parseJsonSafe(
@@ -8806,9 +8969,16 @@ async function listSBetPredictions(
       )
       .all();
 
-  return (
-    result.results || []
-  ).map(
+  const rows =
+    result.results || [];
+
+  await hydratePredictionDeadlines(
+    env,
+    raceDate,
+    rows
+  );
+
+  return rows.map(
     row => {
       const snapshot =
         parseJsonSafe(
@@ -8863,7 +9033,7 @@ async function listSBetPredictions(
           : [];
 
       /*
-        V6.5.7:
+        V6.5.8:
         predictions.prediction_json に resultCheck が無くても、
         learning_races の確定結果をフォールバックとして使う。
         これでS勝負 / S見送り一覧から結果表示が消えない。
@@ -8995,7 +9165,7 @@ async function listSBetPredictions(
 }
 
 /* =========================================================
-   V6.5.7 D1自動成績集計
+   V6.5.8 D1自動成績集計
    - ブラウザlocalStorageではなくD1を正本にする
    - 自動分析したS/A/Bの結果確定レースを集計
    - 本線6点 / 穴候補 / S勝負 / S見送り / ★★★★★
