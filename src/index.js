@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.8";
+const WORKER_VERSION = "6.5.9";
 const AI_VERSION = "6.6.12";
 
 const AUTO_MIN_MINUTES = 10;
@@ -8468,6 +8468,616 @@ function compactLineNotification(result) {
   };
 }
 
+/* =========================================================
+   V6.5.9 1日終了時LINE成績まとめ
+   - 公式の当日開催場と最終締切を確認
+   - 当日のAI学習レース結果がすべて確定してから送信
+   - 1日1回だけ送信、失敗時は次回Cronで再試行
+   - S勝負 / S見送り / ★★★★★ / 最高的中払戻を集計
+========================================================= */
+
+async function ensureDailySummaryTable(env) {
+  await env.DB
+    .prepare(`
+      CREATE TABLE IF NOT EXISTS daily_summary_notifications (
+        race_date TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        sent_at TEXT,
+        error_text TEXT,
+        message_text TEXT,
+        summary_json TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    .run();
+}
+
+async function getDailySummaryState(env, raceDate) {
+  await ensureDailySummaryTable(env);
+
+  return await env.DB
+    .prepare(`
+      SELECT
+        race_date,
+        status,
+        sent_at,
+        error_text,
+        updated_at
+      FROM daily_summary_notifications
+      WHERE race_date = ?
+      LIMIT 1
+    `)
+    .bind(raceDate)
+    .first();
+}
+
+async function saveDailySummaryState(
+  env,
+  raceDate,
+  status,
+  message,
+  summary,
+  errorText = null
+) {
+  await ensureDailySummaryTable(env);
+
+  await env.DB
+    .prepare(`
+      INSERT INTO daily_summary_notifications (
+        race_date,
+        status,
+        sent_at,
+        error_text,
+        message_text,
+        summary_json,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+
+      ON CONFLICT(race_date)
+      DO UPDATE SET
+        status=excluded.status,
+        sent_at=excluded.sent_at,
+        error_text=excluded.error_text,
+        message_text=excluded.message_text,
+        summary_json=excluded.summary_json,
+        updated_at=CURRENT_TIMESTAMP
+    `)
+    .bind(
+      raceDate,
+      status,
+      status === "SENT"
+        ? nowJST()
+        : null,
+      errorText,
+      message || null,
+      JSON.stringify(summary || null)
+    )
+    .run();
+}
+
+function jstClockHour() {
+  return Number(
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:"Asia/Tokyo",
+        hour:"2-digit",
+        hour12:false
+      }
+    ).format(new Date())
+  );
+}
+
+async function officialDayEndState(raceDate) {
+  /*
+    15時より前は日次集計判定を走らせない。
+    通常の全場終了時刻より十分早く、外部取得回数も抑える。
+  */
+  if (
+    raceDate === todayJST() &&
+    jstClockHour() < 15
+  ) {
+    return {
+      ready:false,
+      status:"TOO_EARLY",
+      venues:0,
+      races:0,
+      latestDeadlineJST:null
+    };
+  }
+
+  const venueList =
+    await venues(raceDate);
+
+  if (!venueList.length) {
+    return {
+      ready:false,
+      status:"NO_VENUES",
+      venues:0,
+      races:0,
+      latestDeadlineJST:null
+    };
+  }
+
+  const venueResults =
+    await mapChunks(
+      venueList,
+      4,
+      item =>
+        venueData(
+          raceDate,
+          item.jcd
+        )
+    );
+
+  let raceCount = 0;
+  let latestDeadlineMs = 0;
+  let latestDeadlineJST = null;
+  let missingDeadline = 0;
+  let venueErrors = 0;
+
+  for (const result of venueResults) {
+    if (result.status !== "fulfilled") {
+      venueErrors++;
+      continue;
+    }
+
+    for (const race of result.value?.races || []) {
+      raceCount++;
+
+      if (!race.deadlineJST) {
+        missingDeadline++;
+        continue;
+      }
+
+      const ms =
+        new Date(race.deadlineJST)
+          .getTime();
+
+      if (
+        Number.isFinite(ms) &&
+        ms > latestDeadlineMs
+      ) {
+        latestDeadlineMs = ms;
+        latestDeadlineJST =
+          race.deadlineJST;
+      }
+    }
+  }
+
+  if (
+    venueErrors > 0 ||
+    !latestDeadlineMs
+  ) {
+    return {
+      ready:false,
+      status:"WAIT_OFFICIAL_DATA",
+      venues:venueList.length,
+      races:raceCount,
+      venueErrors,
+      missingDeadline,
+      latestDeadlineJST
+    };
+  }
+
+  /*
+    最終締切直後ではなく8分待つ。
+    通常はD1の未確定結果が0になってから送る。
+    取消などで未確定行が残る場合でも、最終締切60分後には
+    確定済み分で日次集計を送れるようにする。
+  */
+  const readyAtMs =
+    latestDeadlineMs +
+    8 * 60000;
+
+  const pendingFallbackAtMs =
+    latestDeadlineMs +
+    60 * 60000;
+
+  return {
+    ready:
+      Date.now() >= readyAtMs,
+    status:
+      Date.now() >= readyAtMs
+        ? "ALL_RACES_ENDED"
+        : "WAIT_LAST_RACE",
+    venues:venueList.length,
+    races:raceCount,
+    venueErrors,
+    missingDeadline,
+    latestDeadlineJST,
+    readyAt:
+      new Date(readyAtMs)
+        .toISOString(),
+    pendingFallbackAt:
+      new Date(pendingFallbackAtMs)
+        .toISOString()
+  };
+}
+
+async function learningDayResultState(
+  env,
+  raceDate
+) {
+  const row =
+    await env.DB
+      .prepare(`
+        SELECT
+          COUNT(*) AS total_count,
+          SUM(CASE WHEN finished=1 THEN 1 ELSE 0 END) AS finished_count,
+          SUM(CASE WHEN finished=0 THEN 1 ELSE 0 END) AS pending_count
+        FROM learning_races
+        WHERE race_date = ?
+          AND historical_import = 0
+      `)
+      .bind(raceDate)
+      .first();
+
+  return {
+    total:
+      Number(row?.total_count || 0),
+    finished:
+      Number(row?.finished_count || 0),
+    pending:
+      Number(row?.pending_count || 0)
+  };
+}
+
+async function bestCandidateHitForDate(
+  env,
+  raceDate
+) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          race_key,
+          venue,
+          rno,
+          race_data_json,
+          result_json
+        FROM learning_races
+        WHERE race_date = ?
+          AND finished = 1
+          AND race_data_json IS NOT NULL
+          AND result_json IS NOT NULL
+      `)
+      .bind(raceDate)
+      .all();
+
+  let best = null;
+
+  for (const row of result.results || []) {
+    const snapshot =
+      parseJsonSafe(
+        row.race_data_json,
+        null
+      );
+
+    const raceResult =
+      parseJsonSafe(
+        row.result_json,
+        null
+      );
+
+    if (!snapshot || !raceResult) {
+      continue;
+    }
+
+    const check =
+      resultCheckFromStoredResult(
+        snapshot,
+        raceResult
+      );
+
+    if (
+      !check ||
+      (!check.main6Hit && !check.holeHit)
+    ) {
+      continue;
+    }
+
+    const payout =
+      Number(check.payout || 0);
+
+    if (
+      !Number.isFinite(payout) ||
+      payout <= 0
+    ) {
+      continue;
+    }
+
+    if (!best || payout > best.payout) {
+      best = {
+        raceKey:row.race_key,
+        venue:row.venue,
+        rno:Number(row.rno),
+        combination:check.combination,
+        payout,
+        type:
+          check.main6Hit
+            ? "本線6点"
+            : "穴候補"
+      };
+    }
+  }
+
+  return best;
+}
+
+function formatRateLine(hits, races) {
+  const n = Number(races || 0);
+  const h = Number(hits || 0);
+  const rate =
+    n > 0
+      ? (h / n * 100).toFixed(1)
+      : "0.0";
+
+  return `${h}/${n}（${rate}%）`;
+}
+
+function formatJapaneseDateKey(raceDate) {
+  const s = String(raceDate || "");
+
+  if (!/^\d{8}$/.test(s)) {
+    return s;
+  }
+
+  return (
+    `${Number(s.slice(0,4))}年` +
+    `${Number(s.slice(4,6))}月` +
+    `${Number(s.slice(6,8))}日`
+  );
+}
+
+function buildDailySummaryMessage(
+  raceDate,
+  official,
+  learningState,
+  stats,
+  bestHit
+) {
+  const bestText =
+    bestHit
+      ? `${bestHit.venue} ${bestHit.rno}R\n${bestHit.combination}｜${bestHit.payout.toLocaleString("ja-JP")}円（${bestHit.type}）`
+      : "本線6点・穴候補内の的中なし";
+
+  return `🐰🚤 うさLAB｜本日のAI成績
+${formatJapaneseDateKey(raceDate)}
+
+🏁 本日の全開催終了
+公式開催：${official.venues}場 / ${official.races}R
+AI分析結果確定：${learningState.finished}R${learningState.pending > 0 ? `\n未確定・取消等：${learningState.pending}R` : ""}
+
+🔥 S勝負
+対象：${stats.sBetRaces}R
+本線6点：${formatRateLine(stats.sBetMain6Hits, stats.sBetRaces)}
+穴候補：${formatRateLine(stats.sBetHoleHits, stats.sBetRaces)}
+本線＋穴：${formatRateLine(stats.sBetCandidateHits, stats.sBetRaces)}
+
+⚠️ S見送り
+対象：${stats.sPassRaces}R
+本線6点：${formatRateLine(stats.sPassMain6Hits, stats.sPassRaces)}
+🎯 穴候補：${formatRateLine(stats.sPassHoleHits, stats.sPassRaces)}
+本線＋穴：${formatRateLine(stats.sPassCandidateHits, stats.sPassRaces)}
+
+★★★★★
+対象：${stats.fiveStarRaces}R
+本線6点：${formatRateLine(stats.fiveStarMain6Hits, stats.fiveStarRaces)}
+本線＋穴：${formatRateLine(stats.fiveStarCandidateHits, stats.fiveStarRaces)}
+
+🏆 今日の最高的中払戻
+${bestText}
+
+📊 全AI分析
+本線6点：${formatRateLine(stats.main6Hits, stats.races)}
+本線＋穴：${formatRateLine(stats.candidateHits, stats.races)}
+
+※払戻金は100円購入時の公式払戻額です。
+※実際の購入金額・利益・収支を示すものではありません。
+※AI予想は的中や利益を保証するものではありません。`;
+}
+
+async function runDailySummaryNotification(
+  env,
+  raceDate,
+  options = {}
+) {
+  const force =
+    Boolean(options.force);
+
+  if (!lineNotificationConfigured(env)) {
+    return {
+      ok:true,
+      configured:false,
+      status:"NOT_CONFIGURED",
+      sent:false
+    };
+  }
+
+  const existing =
+    await getDailySummaryState(
+      env,
+      raceDate
+    );
+
+  if (
+    existing?.status === "SENT" &&
+    !options.resend
+  ) {
+    return {
+      ok:true,
+      configured:true,
+      status:"ALREADY_SENT",
+      sent:false,
+      sentAt:existing.sent_at || null
+    };
+  }
+
+  let official;
+
+  try {
+    official =
+      await officialDayEndState(
+        raceDate
+      );
+  } catch (error) {
+    return {
+      ok:false,
+      configured:true,
+      status:"OFFICIAL_CHECK_ERROR",
+      sent:false,
+      error:
+        error?.message ||
+        String(error)
+    };
+  }
+
+  if (!force && !official.ready) {
+    return {
+      ok:true,
+      configured:true,
+      status:official.status,
+      sent:false,
+      official
+    };
+  }
+
+  const learningState =
+    await learningDayResultState(
+      env,
+      raceDate
+    );
+
+  const pendingFallbackMs =
+    official.pendingFallbackAt
+      ? new Date(official.pendingFallbackAt).getTime()
+      : Number.POSITIVE_INFINITY;
+
+  if (
+    !force &&
+    learningState.pending > 0 &&
+    Date.now() < pendingFallbackMs
+  ) {
+    return {
+      ok:true,
+      configured:true,
+      status:"WAIT_RESULTS",
+      sent:false,
+      official,
+      learningState
+    };
+  }
+
+  if (learningState.finished <= 0) {
+    return {
+      ok:true,
+      configured:true,
+      status:"NO_AI_RESULTS",
+      sent:false,
+      official,
+      learningState
+    };
+  }
+
+  const overview =
+    await performanceOverview(env);
+
+  const stats =
+    overview.today;
+
+  const bestHit =
+    await bestCandidateHitForDate(
+      env,
+      raceDate
+    );
+
+  const summary = {
+    raceDate,
+    official,
+    learningState,
+    stats,
+    bestHit,
+    generatedAt:nowJST()
+  };
+
+  const message =
+    buildDailySummaryMessage(
+      raceDate,
+      official,
+      learningState,
+      stats,
+      bestHit
+    );
+
+  try {
+    await sendLinePush(
+      env,
+      message
+    );
+
+    await saveDailySummaryState(
+      env,
+      raceDate,
+      "SENT",
+      message,
+      summary,
+      null
+    );
+
+    return {
+      ok:true,
+      configured:true,
+      status:"SENT",
+      sent:true,
+      summary
+    };
+
+  } catch (error) {
+    const errorText =
+      error?.message ||
+      String(error);
+
+    try {
+      await saveDailySummaryState(
+        env,
+        raceDate,
+        "ERROR",
+        message,
+        summary,
+        errorText
+      );
+    } catch {}
+
+    return {
+      ok:false,
+      configured:true,
+      status:"ERROR",
+      sent:false,
+      error:errorText
+    };
+  }
+}
+
+function compactDailySummary(result) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    configured:
+      Boolean(result.configured),
+    status:
+      result.status || null,
+    sent:
+      Boolean(result.sent),
+    error:
+      result.error || null
+  };
+}
+
 async function runScheduledAutomation(
   env,
   event = null
@@ -8588,6 +9198,45 @@ async function runScheduledAutomation(
     };
   }
 
+  let dailySummary =
+    null;
+
+  try {
+    dailySummary =
+      compactDailySummary(
+        await runDailySummaryNotification(
+          env,
+          hd
+        )
+      );
+
+    if (
+      dailySummary?.status === "ERROR" ||
+      dailySummary?.status === "OFFICIAL_CHECK_ERROR"
+    ) {
+      errors.push(
+        `DAILY_SUMMARY: ${dailySummary.error || dailySummary.status}`
+      );
+    }
+
+  } catch (error) {
+    const dailyError =
+      error?.message ||
+      String(error);
+
+    errors.push(
+      `DAILY_SUMMARY: ${dailyError}`
+    );
+
+    dailySummary = {
+      configured:
+        lineNotificationConfigured(env),
+      status:"ERROR",
+      sent:false,
+      error:dailyError
+    };
+  }
+
   const finishedAt =
     nowJST();
 
@@ -8608,7 +9257,11 @@ async function runScheduledAutomation(
       lineNotify
         ?.failed ||
       0
-    ) > 0;
+    ) > 0
+    ||
+    dailySummary?.status === "ERROR"
+    ||
+    dailySummary?.status === "OFFICIAL_CHECK_ERROR";
 
   const summary = {
     workerVersion:
@@ -8627,6 +9280,7 @@ async function runScheduledAutomation(
     auto,
     resultUpdate,
     lineNotify,
+    dailySummary,
     error:
       errors.length
         ? errors.join(
@@ -8757,6 +9411,12 @@ async function automationStatus(env) {
       )
       .first();
 
+  const dailySummaryState =
+    await getDailySummaryState(
+      env,
+      todayJST()
+    );
+
   return {
     workerVersion:
       WORKER_VERSION,
@@ -8807,6 +9467,20 @@ async function automationStatus(env) {
         ),
       latest:
         lineLatest ||
+        null
+    },
+    dailySummary:{
+      status:
+        dailySummaryState?.status ||
+        null,
+      sentAt:
+        dailySummaryState?.sent_at ||
+        null,
+      error:
+        dailySummaryState?.error_text ||
+        null,
+      updatedAt:
+        dailySummaryState?.updated_at ||
         null
     },
     storage:
@@ -10112,6 +10786,12 @@ export default {
             true,
 
           resultDisplayFallback:
+            true,
+
+          dailySummaryLineNotification:
+            true,
+
+          dailySummaryAfterAllRaces:
             true
         });
       }
@@ -10374,6 +11054,39 @@ export default {
             await runLineNotifications(
               env,
               todayJST()
+            )
+          )
+        });
+      }
+
+      /* ===== V6.5.9 1日終了時LINE集計を手動実行 ===== */
+
+      if (
+        url.pathname ===
+        "/api/daily-summary-run"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+          ...(
+            await runDailySummaryNotification(
+              env,
+              todayJST(),
+              {
+                force:
+                  url.searchParams.get("force") === "1",
+                resend:
+                  url.searchParams.get("resend") === "1"
+              }
             )
           )
         });
