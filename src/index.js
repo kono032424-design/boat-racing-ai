@@ -1,7 +1,7 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.5.9";
-const AI_VERSION = "6.6.12";
+const WORKER_VERSION = "6.6.0";
+const AI_VERSION = "6.7.0";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
@@ -2471,7 +2471,7 @@ async function getPredictionByRaceKey(
 }
 
 /* =========================
-   V6.6.12 AI
+   V6.7.0 AI
 ========================= */
 
 const COMPONENT_NAMES = {
@@ -2953,10 +2953,15 @@ async function calculateRoleLearnedWeights(
       races:
         history.length,
 
+      recentWeighted:false,
+
       roles,
 
       overall:
-        blankWeights()
+        blankWeights(),
+
+      _history:
+        history
     };
   }
 
@@ -2987,8 +2992,32 @@ async function calculateRoleLearnedWeights(
       );
 
     for (
-      const item of history
+      let historyIndex = 0;
+      historyIndex < history.length;
+      historyIndex++
     ) {
+      const item =
+        history[
+          historyIndex
+        ];
+
+      /*
+        直近50Rは3倍、51〜100Rは2倍、それ以前は1倍。
+        最近外れている/効いていない要素が古い成功例に埋もれないよう、
+        ロール別学習そのものを直近寄りにする。
+      */
+      const distanceFromLatest =
+        history.length -
+        1 -
+        historyIndex;
+
+      const recencyCopies =
+        distanceFromLatest < 50
+          ? 3
+          : distanceFromLatest < 100
+            ? 2
+            : 1;
+
       const winningLanes =
         item.result
           .winningLanes
@@ -3092,16 +3121,25 @@ async function calculateRoleLearnedWeights(
         if (
           average > 0
         ) {
-          signals[
-            key
-          ].push(
+          const signal =
             (
               winnerValue -
               average
             )
             /
-            average
-          );
+            average;
+
+          for (
+            let copy = 0;
+            copy < recencyCopies;
+            copy++
+          ) {
+            signals[
+              key
+            ].push(
+              signal
+            );
+          }
         }
       }
     }
@@ -3207,12 +3245,29 @@ async function calculateRoleLearnedWeights(
     races:
       history.length,
 
+    recentWeighted:true,
+
+    recent50:
+      Math.min(
+        history.length,
+        50
+      ),
+
+    recent100:
+      Math.min(
+        history.length,
+        100
+      ),
+
     roles,
 
-    overall
+    overall,
+
+    /* buildServerPrediction 内だけで使う。snapshotには保存しない */
+    _history:
+      history
   };
 }
-
 /* =========================
    役割別スコア
 ========================= */
@@ -3292,6 +3347,1083 @@ function overallScore(
     /
     10
   );
+}
+
+
+/* =========================================================
+   V6.7.0 適応学習
+   - 1号艇の過信チェック
+   - 会場別 / R別の1着補正
+   - 直近100Rの買い目パターン補正
+   - S / ★★★★★ の実績キャリブレーション
+========================================================= */
+
+function normalizedFieldPosition(
+  value,
+  values,
+  lowerIsBetter = false
+) {
+  const v =
+    safeNumber(
+      value
+    );
+
+  const list =
+    values
+      .map(
+        safeNumber
+      )
+      .filter(
+        item =>
+          item !== null
+      );
+
+  if (
+    v === null ||
+    list.length < 2
+  ) {
+    return null;
+  }
+
+  const min =
+    Math.min(
+      ...list
+    );
+
+  const max =
+    Math.max(
+      ...list
+    );
+
+  if (
+    max === min
+  ) {
+    return .5;
+  }
+
+  const p =
+    clamp(
+      (
+        v -
+        min
+      )
+      /
+      (
+        max -
+        min
+      ),
+      0,
+      1
+    );
+
+  return lowerIsBetter
+    ? 1 - p
+    : p;
+}
+
+function lane1GuardInfo(
+  racers
+) {
+  const lane1 =
+    racers.find(
+      racer =>
+        Number(
+          racer.lane
+        ) === 1
+    );
+
+  if (
+    !lane1
+  ) {
+    return {
+      active:false,
+      support:.5,
+      adjustment:0,
+      availableWeight:0,
+      details:{}
+    };
+  }
+
+  const definitions = [
+    {
+      key:"exhibitionST",
+      weight:.30,
+      value:
+        lane1.before
+          ?.exhibitionST,
+      values:
+        racers.map(
+          racer =>
+            racer.before
+              ?.exhibitionST
+        ),
+      lower:true
+    },
+    {
+      key:"motor",
+      weight:.25,
+      value:
+        lane1.motor
+          ?.secondRate,
+      values:
+        racers.map(
+          racer =>
+            racer.motor
+              ?.secondRate
+        ),
+      lower:false
+    },
+    {
+      key:"local",
+      weight:.20,
+      value:
+        lane1.local
+          ?.winRate,
+      values:
+        racers.map(
+          racer =>
+            racer.local
+              ?.winRate
+        ),
+      lower:false
+    },
+    {
+      key:"exhibitionTime",
+      weight:.15,
+      value:
+        lane1.before
+          ?.exhibitionTime,
+      values:
+        racers.map(
+          racer =>
+            racer.before
+              ?.exhibitionTime
+        ),
+      lower:true
+    },
+    {
+      key:"avgST",
+      weight:.10,
+      value:
+        lane1.avgST,
+      values:
+        racers.map(
+          racer =>
+            racer.avgST
+        ),
+      lower:true
+    }
+  ];
+
+  let weighted = 0;
+  let availableWeight = 0;
+  const details = {};
+
+  for (
+    const definition of
+    definitions
+  ) {
+    const position =
+      normalizedFieldPosition(
+        definition.value,
+        definition.values,
+        definition.lower
+      );
+
+    details[
+      definition.key
+    ] =
+      position;
+
+    if (
+      position === null
+    ) {
+      continue;
+    }
+
+    weighted +=
+      position *
+      definition.weight;
+
+    availableWeight +=
+      definition.weight;
+  }
+
+  const support =
+    availableWeight > 0
+      ? weighted /
+        availableWeight
+      : .5;
+
+  let adjustment = 0;
+
+  /*
+    1号艇だから自動的に頭、を抑える。
+    直前ST・モーター・当地・展示が弱いほど1着スコアを下げる。
+  */
+  if (
+    availableWeight >= .35
+  ) {
+    if (
+      support < .30
+    ) {
+      adjustment = -6;
+
+    } else if (
+      support < .40
+    ) {
+      adjustment = -4.5;
+
+    } else if (
+      support < .50
+    ) {
+      adjustment = -2.5;
+
+    } else if (
+      support > .82
+    ) {
+      adjustment = 1;
+    }
+  }
+
+  const actualCourse =
+    safeNumber(
+      lane1.before
+        ?.course
+    );
+
+  if (
+    actualCourse !== null &&
+    actualCourse !== 1
+  ) {
+    adjustment -= 3;
+  }
+
+  return {
+    active:
+      availableWeight >= .35,
+
+    support:
+      Math.round(
+        support * 1000
+      ) / 1000,
+
+    adjustment:
+      Math.round(
+        adjustment * 10
+      ) / 10,
+
+    availableWeight:
+      Math.round(
+        availableWeight * 1000
+      ) / 1000,
+
+    details,
+
+    course:
+      actualCourse
+  };
+}
+
+function applyLane1Guard(
+  racers
+) {
+  const info =
+    lane1GuardInfo(
+      racers
+    );
+
+  if (
+    !info.adjustment
+  ) {
+    return info;
+  }
+
+  const lane1 =
+    racers.find(
+      racer =>
+        Number(
+          racer.lane
+        ) === 1
+    );
+
+  if (
+    lane1
+  ) {
+    lane1.firstScore =
+      Math.round(
+        (
+          Number(
+            lane1.firstScore ||
+            0
+          )
+          +
+          info.adjustment
+        )
+        * 10
+      )
+      /
+      10;
+  }
+
+  return info;
+}
+
+function historyWinnerLane(
+  item
+) {
+  return Number(
+    item?.result
+      ?.winningLanes
+      ?.[0] ||
+    String(
+      item?.result
+        ?.combination ||
+      ""
+    ).split("-")[0] ||
+    0
+  );
+}
+
+function historyTopFirstLane(
+  item
+) {
+  const racers =
+    Array.isArray(
+      item?.racersDetailed
+    )
+      ? item.racersDetailed
+      : [];
+
+  if (
+    racers.length
+  ) {
+    const ranked =
+      racers
+        .slice()
+        .sort(
+          (a,b) =>
+            Number(
+              b.firstScore ||
+              0
+            )
+            -
+            Number(
+              a.firstScore ||
+              0
+            )
+        );
+
+    if (
+      ranked[0]
+    ) {
+      return Number(
+        ranked[0].lane ||
+        0
+      );
+    }
+  }
+
+  const firstBet =
+    Array.isArray(
+      item?.bets
+    )
+      ? item.bets[0]
+      : null;
+
+  return Number(
+    String(
+      firstBet?.combination ||
+      ""
+    ).split("-")[0] ||
+    0
+  );
+}
+
+function historyMain6Hit(
+  item
+) {
+  const combination =
+    item?.result
+      ?.combination ||
+    (
+      Array.isArray(
+        item?.result
+          ?.winningLanes
+      )
+        ? item.result
+            .winningLanes
+            .slice(0,3)
+            .join("-")
+        : null
+    );
+
+  if (
+    !combination
+  ) {
+    return false;
+  }
+
+  return (
+    Array.isArray(
+      item?.bets
+    )
+      ? item.bets
+          .slice(0,6)
+          .some(
+            bet =>
+              bet?.combination ===
+              combination
+          )
+      : false
+  );
+}
+
+function historyTop6Expected(
+  item
+) {
+  if (
+    !Array.isArray(
+      item?.bets
+    )
+  ) {
+    return 0;
+  }
+
+  return clamp(
+    item.bets
+      .slice(0,6)
+      .reduce(
+        (sum, bet) =>
+          sum +
+          Number(
+            bet?.probability ||
+            0
+          ),
+        0
+      ),
+    0,
+    1
+  );
+}
+
+function raceBand(
+  rno
+) {
+  const n =
+    Number(
+      rno ||
+      0
+    );
+
+  if (
+    n <= 4
+  ) {
+    return "EARLY";
+  }
+
+  if (
+    n <= 8
+  ) {
+    return "MIDDLE";
+  }
+
+  return "LATE";
+}
+
+function smoothedLaneWinRate(
+  items,
+  lane,
+  priorRate,
+  priorWeight = 12
+) {
+  const n =
+    items.length;
+
+  if (
+    !n
+  ) {
+    return {
+      races:0,
+      wins:0,
+      rate:priorRate
+    };
+  }
+
+  const wins =
+    items.filter(
+      item =>
+        historyWinnerLane(
+          item
+        ) ===
+        Number(
+          lane
+        )
+    ).length;
+
+  return {
+    races:n,
+    wins,
+    rate:
+      (
+        wins +
+        priorRate *
+        priorWeight
+      )
+      /
+      (
+        n +
+        priorWeight
+      )
+  };
+}
+
+function calculateVenueRnoFactors(
+  history,
+  context,
+  racers
+) {
+  const recent =
+    history.slice(
+      -300
+    );
+
+  const factors = {};
+  const diagnostics = {};
+
+  for (
+    const racer of
+    racers
+  ) {
+    const lane =
+      Number(
+        racer.lane
+      );
+
+    const globalLane =
+      smoothedLaneWinRate(
+        recent,
+        lane,
+        1 / 6,
+        18
+      );
+
+    const baseRate =
+      Math.max(
+        globalLane.rate,
+        .03
+      );
+
+    const venueItems =
+      recent.filter(
+        item =>
+          String(
+            item.jcd ||
+            ""
+          ).padStart(2,"0") ===
+          String(
+            context.jcd ||
+            ""
+          ).padStart(2,"0")
+      );
+
+    const exactItems =
+      venueItems.filter(
+        item =>
+          Number(
+            item.rno
+          ) ===
+          Number(
+            context.rno
+          )
+      );
+
+    const rnoItems =
+      recent.filter(
+        item =>
+          Number(
+            item.rno
+          ) ===
+          Number(
+            context.rno
+          )
+      );
+
+    const band =
+      raceBand(
+        context.rno
+      );
+
+    const bandItems =
+      recent.filter(
+        item =>
+          raceBand(
+            item.rno
+          ) ===
+          band
+      );
+
+    const venue =
+      smoothedLaneWinRate(
+        venueItems,
+        lane,
+        baseRate,
+        10
+      );
+
+    const exact =
+      smoothedLaneWinRate(
+        exactItems,
+        lane,
+        baseRate,
+        14
+      );
+
+    const rno =
+      smoothedLaneWinRate(
+        rnoItems,
+        lane,
+        baseRate,
+        14
+      );
+
+    const bandStats =
+      smoothedLaneWinRate(
+        bandItems,
+        lane,
+        baseRate,
+        16
+      );
+
+    const venueWeight =
+      Math.min(
+        venueItems.length / 24,
+        1
+      );
+
+    const exactWeight =
+      Math.min(
+        exactItems.length / 10,
+        1
+      );
+
+    const rnoWeight =
+      Math.min(
+        rnoItems.length / 28,
+        1
+      );
+
+    const bandWeight =
+      Math.min(
+        bandItems.length / 40,
+        1
+      );
+
+    const logAdjustment =
+      Math.log(
+        clamp(
+          venue.rate /
+          baseRate,
+          .65,
+          1.35
+        )
+      ) * .40 * venueWeight
+      +
+      Math.log(
+        clamp(
+          exact.rate /
+          baseRate,
+          .65,
+          1.35
+        )
+      ) * .30 * exactWeight
+      +
+      Math.log(
+        clamp(
+          rno.rate /
+          baseRate,
+          .70,
+          1.30
+        )
+      ) * .18 * rnoWeight
+      +
+      Math.log(
+        clamp(
+          bandStats.rate /
+          baseRate,
+          .75,
+          1.25
+        )
+      ) * .12 * bandWeight;
+
+    const factor =
+      clamp(
+        Math.exp(
+          logAdjustment
+        ),
+        .84,
+        1.16
+      );
+
+    factors[lane] =
+      Math.round(
+        factor * 1000
+      ) / 1000;
+
+    diagnostics[lane] = {
+      baseRate,
+      venue,
+      exact,
+      rno,
+      band:bandStats,
+      factor:
+        factors[lane]
+    };
+  }
+
+  return {
+    factors,
+    diagnostics,
+    sample:
+      recent.length
+  };
+}
+
+function applyVenueRnoFactors(
+  racers,
+  contextLearning
+) {
+  for (
+    const racer of
+    racers
+  ) {
+    const factor =
+      Number(
+        contextLearning
+          ?.factors
+          ?.[racer.lane] ||
+        1
+      );
+
+    /* strength(score)=exp(score/20) なので、20*ln(factor)で確率側に反映 */
+    racer.firstScore =
+      Math.round(
+        (
+          Number(
+            racer.firstScore ||
+            0
+          )
+          +
+          20 *
+          Math.log(
+            clamp(
+              factor,
+              .84,
+              1.16
+            )
+          )
+        )
+        * 10
+      )
+      /
+      10;
+  }
+}
+
+function calibrationFromItems(
+  items,
+  minSample = 8
+) {
+  const n =
+    items.length;
+
+  if (
+    n < minSample
+  ) {
+    return {
+      sample:n,
+      hits:
+        items.filter(
+          historyMain6Hit
+        ).length,
+      actual:null,
+      expected:null,
+      factor:1
+    };
+  }
+
+  const hits =
+    items.filter(
+      historyMain6Hit
+    ).length;
+
+  const actual =
+    hits /
+    n;
+
+  const expected =
+    items.reduce(
+      (sum, item) =>
+        sum +
+        historyTop6Expected(
+          item
+        ),
+      0
+    )
+    /
+    n;
+
+  const reliability =
+    Math.min(
+      n / 30,
+      1
+    );
+
+  const factor =
+    clamp(
+      1 +
+      (
+        actual -
+        expected
+      )
+      *
+      1.35 *
+      reliability,
+      .82,
+      1.08
+    );
+
+  return {
+    sample:n,
+    hits,
+    actual:
+      Math.round(
+        actual * 1000
+      ) / 1000,
+    expected:
+      Math.round(
+        expected * 1000
+      ) / 1000,
+    factor:
+      Math.round(
+        factor * 1000
+      ) / 1000
+  };
+}
+
+function calculateRecentPatternCalibration(
+  history,
+  strategy,
+  racers
+) {
+  const recent =
+    history.slice(
+      -100
+    );
+
+  const topLane =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.firstScore -
+          a.firstScore
+      )[0]
+      ?.lane;
+
+  const strategyType =
+    strategy?.type ||
+    null;
+
+  const exact =
+    recent.filter(
+      item =>
+        historyTopFirstLane(
+          item
+        ) ===
+        Number(
+          topLane
+        )
+      &&
+        item.strategy
+          ?.type ===
+        strategyType
+    );
+
+  const sameStrategy =
+    recent.filter(
+      item =>
+        item.strategy
+          ?.type ===
+        strategyType
+    );
+
+  const sameTopLane =
+    recent.filter(
+      item =>
+        historyTopFirstLane(
+          item
+        ) ===
+        Number(
+          topLane
+        )
+    );
+
+  let selected =
+    exact;
+
+  let bucket =
+    "lane+strategy";
+
+  if (
+    selected.length < 8
+  ) {
+    selected =
+      sameStrategy.length >= 8
+        ? sameStrategy
+        : sameTopLane.length >= 8
+          ? sameTopLane
+          : recent;
+
+    bucket =
+      sameStrategy.length >= 8
+        ? "strategy"
+        : sameTopLane.length >= 8
+          ? "firstLane"
+          : "recent100";
+  }
+
+  return {
+    bucket,
+    topLane:
+      Number(
+        topLane ||
+        0
+      ),
+    strategyType,
+    ...calibrationFromItems(
+      selected,
+      8
+    )
+  };
+}
+
+function calculateSCalibration(
+  history
+) {
+  const recent =
+    history.slice(
+      -100
+    );
+
+  const sBet =
+    recent.filter(
+      item =>
+        item.confidence ===
+          "S"
+      &&
+        item.sDecision
+          ?.status ===
+          "BET"
+    );
+
+  const fiveStar =
+    sBet.filter(
+      item =>
+        Number(
+          item.sDecision
+            ?.score ||
+          0
+        ) >= 80
+    );
+
+  return {
+    overall:
+      calibrationFromItems(
+        sBet,
+        8
+      ),
+
+    fiveStar:
+      calibrationFromItems(
+        fiveStar,
+        8
+      )
+  };
+}
+
+function makeAdaptiveLearning(
+  history,
+  context,
+  racers,
+  strategy,
+  lane1Guard,
+  venueRnoLearning
+) {
+  const recentPattern =
+    calculateRecentPatternCalibration(
+      history,
+      strategy,
+      racers
+    );
+
+  const sCalibration =
+    calculateSCalibration(
+      history
+    );
+
+  const topLane =
+    racers
+      .slice()
+      .sort(
+        (a,b) =>
+          b.firstScore -
+          a.firstScore
+      )[0]
+      ?.lane;
+
+  return {
+    historyRaces:
+      history.length,
+
+    recentWindow:
+      Math.min(
+        history.length,
+        100
+      ),
+
+    lane1Guard,
+
+    venueRno:{
+      sample:
+        venueRnoLearning
+          ?.sample ||
+        0,
+
+      topLane:
+        Number(
+          topLane ||
+          0
+        ),
+
+      topLaneFactor:
+        Number(
+          venueRnoLearning
+            ?.factors
+            ?.[topLane] ||
+          1
+        ),
+
+      band:
+        raceBand(
+          context.rno
+        )
+    },
+
+    recentPattern,
+
+    sCalibration
+  };
 }
 
 /* =========================
@@ -4135,7 +5267,8 @@ function beforeCoverage(
 function makeSDecision(
   confidence,
   racers,
-  allBets
+  allBets,
+  adaptiveLearning = null
 ) {
   if (
     confidence !== "S"
@@ -4170,6 +5303,13 @@ function makeSDecision(
           a.firstScore
       );
 
+  const topLane =
+    Number(
+      ranked[0]
+        ?.lane ||
+      0
+    );
+
   const firstShare =
     firstWinShare(
       ranked[0].lane,
@@ -4180,7 +5320,7 @@ function makeSDecision(
     ranked[0].firstScore -
     ranked[1].firstScore;
 
-  const top6Probability =
+  const rawTop6Probability =
     allBets
       .slice(
         0,
@@ -4214,6 +5354,117 @@ function makeSDecision(
   const coverage =
     beforeCoverage(
       racers
+    );
+
+  const patternFactor =
+    Number(
+      adaptiveLearning
+        ?.recentPattern
+        ?.factor ||
+      1
+    );
+
+  const sOverallFactor =
+    Number(
+      adaptiveLearning
+        ?.sCalibration
+        ?.overall
+        ?.factor ||
+      1
+    );
+
+  /*
+    まず通常Sスコアを出し、80点以上になりそうな場合は
+    過去の★★★★★実績も追加で照合する。
+  */
+  const provisionalTop6Probability =
+    clamp(
+      rawTop6Probability *
+      patternFactor *
+      sOverallFactor,
+      0,
+      1
+    );
+
+  const provisionalQuality =
+    (
+      norm(
+        firstShare,
+        .22,
+        .42
+      ) * .25
+
+      +
+
+      norm(
+        provisionalTop6Probability,
+        .12,
+        .28
+      ) * .25
+
+      +
+
+      norm(
+        firstGap,
+        7,
+        16
+      ) * .15
+
+      +
+
+      clamp(
+        secondStable /
+        100,
+        0,
+        1
+      ) * .10
+
+      +
+
+      clamp(
+        thirdStable /
+        100,
+        0,
+        1
+      ) * .10
+
+      +
+
+      clamp(
+        coverage,
+        0,
+        1
+      ) * .15
+    )
+    *
+    100;
+
+  const highFactor =
+    provisionalQuality >= 80
+      ? Number(
+          adaptiveLearning
+            ?.sCalibration
+            ?.fiveStar
+            ?.factor ||
+          1
+        )
+      : 1;
+
+  const calibrationFactor =
+    clamp(
+      patternFactor *
+      sOverallFactor *
+      highFactor,
+      .72,
+      1.10
+    );
+
+  const top6Probability =
+    clamp(
+      rawTop6Probability *
+      calibrationFactor,
+      0,
+      1
     );
 
   const quality =
@@ -4269,12 +5520,46 @@ function makeSDecision(
     *
     100;
 
+  /*
+    直近100Rで予測確率より実績が弱ければSスコアを下げる。
+    上振れは小さく、下振れはきちんと効かせる。
+  */
+  const calibrationScoreAdjustment =
+    (
+      calibrationFactor -
+      1
+    )
+    *
+    35;
+
   const score =
     Math.round(
-      quality * 10
+      clamp(
+        quality +
+        calibrationScoreAdjustment,
+        0,
+        100
+      )
+      * 10
     )
     /
     10;
+
+  const lane1Guard =
+    adaptiveLearning
+      ?.lane1Guard ||
+    null;
+
+  const lane1Risk =
+    topLane === 1
+    &&
+    lane1Guard
+      ?.active
+    &&
+    Number(
+      lane1Guard.support ||
+      0
+    ) < .42;
 
   const reasons = [];
 
@@ -4290,7 +5575,7 @@ function makeSDecision(
     top6Probability < .18
   ) {
     reasons.push(
-      "上位6点に確率が集中していない"
+      "直近実績補正後、上位6点への確率集中が基準未満"
     );
   }
 
@@ -4319,10 +5604,35 @@ function makeSDecision(
   }
 
   if (
+    lane1Risk
+  ) {
+    reasons.push(
+      "1号艇の展示ST・モーター・当地成績などの裏付けが弱い"
+    );
+  }
+
+  if (
+    patternFactor < .94
+  ) {
+    reasons.push(
+      "直近100Rで同型パターンの成績が弱いため自動減点"
+    );
+  }
+
+  if (
+    sOverallFactor < .94 ||
+    highFactor < .94
+  ) {
+    reasons.push(
+      "過去のS/★★★★★実績を照合して信頼度を自動補正"
+    );
+  }
+
+  if (
     score < 68
   ) {
     reasons.push(
-      "総合安定スコアが基準未満"
+      "補正後の総合安定スコアが基準未満"
     );
   }
 
@@ -4333,7 +5643,9 @@ function makeSDecision(
     &&
     top6Probability >= .18
     &&
-    coverage >= .55;
+    coverage >= .55
+    &&
+    !lane1Risk;
 
   return {
     status:
@@ -4351,7 +5663,20 @@ function makeSDecision(
     metrics:{
       firstShare,
 
+      rawTop6Probability,
+
       top6Probability,
+
+      calibrationFactor,
+
+      recentPatternFactor:
+        patternFactor,
+
+      sCalibrationFactor:
+        sOverallFactor,
+
+      fiveStarCalibrationFactor:
+        highFactor,
 
       firstGap,
 
@@ -4362,15 +5687,26 @@ function makeSDecision(
         thirdStable,
 
       beforeCoverage:
-        coverage
+        coverage,
+
+      lane1Support:
+        lane1Guard
+          ?.support ??
+        null,
+
+      venueRnoFactor:
+        adaptiveLearning
+          ?.venueRno
+          ?.topLaneFactor ??
+        1
     },
 
     reasons:
       battle
         ? [
             "1着候補が優勢",
-            "上位買い目への確率集中を確認",
-            "展示データ条件をクリア"
+            "直近100RとS実績の補正後も基準をクリア",
+            "展示・会場・R別条件を確認"
           ]
         : reasons
   };
@@ -5090,6 +6426,34 @@ async function buildServerPrediction(
       }
     );
 
+  /*
+    ① 1号艇の直前データ裏付けを追加チェック
+    ② 会場別・R別（序盤/中盤/終盤を含む）の実績で1着力を微調整
+  */
+  const lane1Guard =
+    applyLane1Guard(
+      modelRacers
+    );
+
+  const history =
+    Array.isArray(
+      learned._history
+    )
+      ? learned._history
+      : [];
+
+  const venueRnoLearning =
+    calculateVenueRnoFactors(
+      history,
+      context,
+      modelRacers
+    );
+
+  applyVenueRnoFactors(
+    modelRacers,
+    venueRnoLearning
+  );
+
   const overallRanking =
     modelRacers
       .slice()
@@ -5134,11 +6498,22 @@ async function buildServerPrediction(
       main15
     );
 
+  const adaptiveLearning =
+    makeAdaptiveLearning(
+      history,
+      context,
+      modelRacers,
+      strategy,
+      lane1Guard,
+      venueRnoLearning
+    );
+
   const sDecision =
     makeSDecision(
       confidence,
       modelRacers,
-      allBets
+      allBets,
+      adaptiveLearning
     );
 
   const allBetRanking =
@@ -5228,6 +6603,8 @@ async function buildServerPrediction(
     roleLearnedWeights:
       learned.roles,
 
+    adaptiveLearning,
+
     racersDetailed:
       modelRacers.map(
         racer => ({
@@ -5298,6 +6675,7 @@ async function buildServerPrediction(
     overallRanking,
     confidence,
     sDecision,
+    adaptiveLearning,
     allBets,
     main15,
     holeBets,
@@ -6578,7 +7956,7 @@ function validateRace(
 }
 
 /* =========================================================
-   V6.5.4 完全放置オートメーション
+   V6.6.0 完全放置オートメーション
    - 自動予想と結果更新を独立実行
    - 結果をD1へ保存して finished=1
    - predictionsへ的中判定を保存
@@ -10792,6 +12170,18 @@ export default {
             true,
 
           dailySummaryAfterAllRaces:
+            true,
+
+          lane1OvertrustGuard:
+            true,
+
+          recent100AdaptiveLearning:
+            true,
+
+          venueRnoLearning:
+            true,
+
+          sPerformanceCalibration:
             true
         });
       }
