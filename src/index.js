@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.2";
+const WORKER_VERSION = "6.6.3";
 const AI_VERSION = "6.7.2";
 
 const AUTO_MIN_MINUTES = 10;
@@ -536,18 +536,44 @@ async function venues(
       `/owpc/pc/race/index?hd=${hd}`
     );
 
+  /*
+    V6.6.3:
+    BOAT RACE公式側のリンクで & が &amp; にHTMLエスケープされたり、
+    hd=...&jcd=... のように jcd が2番目以降のクエリになる場合でも
+    開催場コードを取りこぼさないようにする。
+
+    旧版の /[?&]jcd=/ は、生HTML上で &amp;jcd= になった場合に
+    マッチせず、開催場0件 → 自動対象0件になることがあった。
+  */
+  const decodedHtml =
+    decodeHtml(html);
+
   const found = [
-    ...html.matchAll(
-      /[?&]jcd=(\d{2})/g
+    ...decodedHtml.matchAll(
+      /jcd=(\d{2})/gi
     )
   ].map(
     match =>
       match[1]
   );
 
-  return [
+  const unique = [
     ...new Set(found)
   ]
+    .filter(
+      jcd =>
+        VENUE_NAMES[jcd]
+    );
+
+  if (
+    unique.length === 0
+  ) {
+    throw new Error(
+      `開催場取得0件: BOAT RACE公式ページのリンク解析に失敗した可能性があります hd=${hd}`
+    );
+  }
+
+  return unique
     .filter(
       jcd =>
         VENUE_NAMES[jcd]
@@ -13278,6 +13304,12 @@ export default {
             true,
 
           fixedStrategyStricter:
+            true,
+
+          venueDiscoveryHtmlEntityFix:
+            true,
+
+          autoTargetZeroGuard:
             true
         });
       }
