@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.3";
+const WORKER_VERSION = "6.6.4";
 const AI_VERSION = "6.7.2";
 
 const AUTO_MIN_MINUTES = 10;
@@ -7168,6 +7168,37 @@ function selectMainlineBets(
   };
 }
 
+/* =========================
+   穴ランク
+========================= */
+
+function holeTier(
+  odds
+) {
+  if (
+    odds >= 80
+  ) {
+    return {
+      key:"big",
+      label:"💥 大穴"
+    };
+  }
+
+  if (
+    odds >= 40
+  ) {
+    return {
+      key:"hole",
+      label:"🔥 穴"
+    };
+  }
+
+  return {
+    key:"middle",
+    label:"🎯 中穴"
+  };
+}
+
 function selectHoleBets(
   allBets,
   mainline
@@ -13310,6 +13341,9 @@ export default {
             true,
 
           autoTargetZeroGuard:
+            true,
+
+          holeTierRestored:
             true
         });
       }
