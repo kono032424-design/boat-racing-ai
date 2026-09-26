@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.5";
+const WORKER_VERSION = "6.6.6";
 const AI_VERSION = "6.7.2";
 
 const AUTO_MIN_MINUTES = 10;
@@ -17,6 +17,19 @@ const LINE_FINAL_MAX_MINUTES = 35;
 const LINE_EARLY_NOTIFICATIONS_ENABLED = false;
 const LINE_PASS_NOTIFICATIONS_ENABLED = false;
 const LINE_DAILY_SUMMARY_ENABLED = true;
+
+/*
+  V6.6.6 サイトPush通知
+  - S勝負の最終通知をWeb Pushでも送信
+  - 1日終了時の集計完了もWeb Pushで通知
+  - VAPID鍵はD1で自動生成・保存（追加Secret不要）
+  - 通知本文に買い目そのものは載せず、タップでS評価一覧を開く
+*/
+const WEB_PUSH_S_BET_ENABLED = true;
+const WEB_PUSH_DAILY_SUMMARY_ENABLED = true;
+const WEB_PUSH_FINAL_MAX_MINUTES = 35;
+const WEB_PUSH_CONTACT =
+  "https://aged-hill-9a89.kono032424.workers.dev/";
 
 /* =========================
    共通
@@ -10086,6 +10099,890 @@ async function runResultUpdates(env) {
 }
 
 
+
+/* =========================================================
+   Web Push通知 V6.6.6
+   - iPhone/iPadは「ホーム画面に追加」したWebアプリから通知許可
+   - VAPID鍵はD1で自動生成
+   - Push本文はService Workerが最新メタ情報を取得して表示
+========================================================= */
+
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  const arr =
+    bytes instanceof Uint8Array
+      ? bytes
+      : new Uint8Array(bytes);
+
+  for (let i = 0; i < arr.length; i++) {
+    binary += String.fromCharCode(arr[i]);
+  }
+
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function textToBase64Url(text) {
+  return bytesToBase64Url(
+    new TextEncoder().encode(
+      String(text || "")
+    )
+  );
+}
+
+function base64UrlToBytes(value) {
+  const normalized =
+    String(value || "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+  const padding =
+    "=".repeat(
+      (4 - normalized.length % 4) % 4
+    );
+
+  const binary =
+    atob(normalized + padding);
+
+  const out =
+    new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
+  }
+
+  return out;
+}
+
+async function ensureWebPushTables(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS web_push_vapid (
+      id INTEGER PRIMARY KEY,
+      public_jwk TEXT NOT NULL,
+      private_jwk TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT,
+      auth TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_success_at TEXT,
+      last_error TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_enabled
+    ON web_push_subscriptions(enabled)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS web_push_events (
+      event_key TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      target_url TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      error_text TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+}
+
+async function ensureWebPushVapid(env) {
+  await ensureWebPushTables(env);
+
+  let row =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        public_jwk,
+        private_jwk,
+        public_key
+      FROM web_push_vapid
+      WHERE id = 1
+      LIMIT 1
+    `).first();
+
+  if (row?.public_key && row?.private_jwk) {
+    return row;
+  }
+
+  const pair =
+    await crypto.subtle.generateKey(
+      {
+        name:"ECDSA",
+        namedCurve:"P-256"
+      },
+      true,
+      ["sign", "verify"]
+    );
+
+  const publicJwk =
+    await crypto.subtle.exportKey(
+      "jwk",
+      pair.publicKey
+    );
+
+  const privateJwk =
+    await crypto.subtle.exportKey(
+      "jwk",
+      pair.privateKey
+    );
+
+  const x =
+    base64UrlToBytes(
+      publicJwk.x
+    );
+
+  const y =
+    base64UrlToBytes(
+      publicJwk.y
+    );
+
+  const rawPublic =
+    new Uint8Array(65);
+
+  rawPublic[0] = 4;
+  rawPublic.set(x, 1);
+  rawPublic.set(y, 33);
+
+  const publicKey =
+    bytesToBase64Url(
+      rawPublic
+    );
+
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO web_push_vapid (
+      id,
+      public_jwk,
+      private_jwk,
+      public_key,
+      updated_at
+    )
+    VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+  `)
+    .bind(
+      JSON.stringify(publicJwk),
+      JSON.stringify(privateJwk),
+      publicKey
+    )
+    .run();
+
+  row =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        public_jwk,
+        private_jwk,
+        public_key
+      FROM web_push_vapid
+      WHERE id = 1
+      LIMIT 1
+    `).first();
+
+  if (!row?.public_key || !row?.private_jwk) {
+    throw new Error(
+      "Web Push用VAPID鍵の初期化に失敗しました"
+    );
+  }
+
+  return row;
+}
+
+async function buildVapidAuthorization(
+  endpoint,
+  vapid
+) {
+  const audience =
+    new URL(endpoint).origin;
+
+  const header =
+    textToBase64Url(
+      JSON.stringify({
+        typ:"JWT",
+        alg:"ES256"
+      })
+    );
+
+  const payload =
+    textToBase64Url(
+      JSON.stringify({
+        aud:audience,
+        exp:
+          Math.floor(Date.now() / 1000) +
+          12 * 60 * 60,
+        sub:WEB_PUSH_CONTACT
+      })
+    );
+
+  const unsigned =
+    `${header}.${payload}`;
+
+  const privateKey =
+    await crypto.subtle.importKey(
+      "jwk",
+      JSON.parse(vapid.private_jwk),
+      {
+        name:"ECDSA",
+        namedCurve:"P-256"
+      },
+      false,
+      ["sign"]
+    );
+
+  const signature =
+    await crypto.subtle.sign(
+      {
+        name:"ECDSA",
+        hash:"SHA-256"
+      },
+      privateKey,
+      new TextEncoder().encode(unsigned)
+    );
+
+  const jwt =
+    `${unsigned}.${bytesToBase64Url(signature)}`;
+
+  return `vapid t=${jwt}, k=${vapid.public_key}`;
+}
+
+async function saveWebPushSubscription(
+  env,
+  subscription
+) {
+  await ensureWebPushTables(env);
+
+  const endpoint =
+    String(
+      subscription?.endpoint || ""
+    ).trim();
+
+  if (!endpoint.startsWith("https://")) {
+    throw new Error(
+      "Push購読endpointが不正です"
+    );
+  }
+
+  const p256dh =
+    subscription?.keys?.p256dh ||
+    subscription?.p256dh ||
+    null;
+
+  const auth =
+    subscription?.keys?.auth ||
+    subscription?.auth ||
+    null;
+
+  await env.DB.prepare(`
+    INSERT INTO web_push_subscriptions (
+      endpoint,
+      p256dh,
+      auth,
+      enabled,
+      last_error,
+      updated_at
+    )
+    VALUES (?, ?, ?, 1, NULL, CURRENT_TIMESTAMP)
+
+    ON CONFLICT(endpoint)
+    DO UPDATE SET
+      p256dh=excluded.p256dh,
+      auth=excluded.auth,
+      enabled=1,
+      last_error=NULL,
+      updated_at=CURRENT_TIMESTAMP
+  `)
+    .bind(
+      endpoint,
+      p256dh,
+      auth
+    )
+    .run();
+
+  return true;
+}
+
+async function disableWebPushSubscription(
+  env,
+  endpoint
+) {
+  await ensureWebPushTables(env);
+
+  await env.DB.prepare(`
+    UPDATE web_push_subscriptions
+    SET
+      enabled=0,
+      updated_at=CURRENT_TIMESTAMP
+    WHERE endpoint = ?
+  `)
+    .bind(
+      String(endpoint || "")
+    )
+    .run();
+}
+
+async function webPushStatus(env) {
+  await ensureWebPushTables(env);
+
+  const count =
+    await env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END) AS enabled_count
+      FROM web_push_subscriptions
+    `).first();
+
+  const latest =
+    await env.DB.prepare(`
+      SELECT
+        event_key,
+        event_type,
+        title,
+        body,
+        target_url,
+        status,
+        sent_count,
+        failed_count,
+        error_text,
+        updated_at
+      FROM web_push_events
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).first();
+
+  return {
+    total:
+      Number(count?.total || 0),
+    enabled:
+      Number(count?.enabled_count || 0),
+    latest:
+      latest || null
+  };
+}
+
+async function sendEmptyWebPush(
+  env,
+  subscription,
+  vapid
+) {
+  const authorization =
+    await buildVapidAuthorization(
+      subscription.endpoint,
+      vapid
+    );
+
+  const response =
+    await fetch(
+      subscription.endpoint,
+      {
+        method:"POST",
+        headers:{
+          "TTL":"120",
+          "Urgency":"high",
+          "Authorization":authorization
+        }
+      }
+    );
+
+  if (response.ok) {
+    await env.DB.prepare(`
+      UPDATE web_push_subscriptions
+      SET
+        last_success_at=?,
+        last_error=NULL,
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `)
+      .bind(
+        nowJST(),
+        subscription.id
+      )
+      .run();
+
+    return {
+      ok:true,
+      status:response.status
+    };
+  }
+
+  const detail =
+    await response.text();
+
+  if (
+    response.status === 404 ||
+    response.status === 410
+  ) {
+    await env.DB.prepare(`
+      UPDATE web_push_subscriptions
+      SET
+        enabled=0,
+        last_error=?,
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `)
+      .bind(
+        `HTTP ${response.status}`,
+        subscription.id
+      )
+      .run();
+  } else {
+    await env.DB.prepare(`
+      UPDATE web_push_subscriptions
+      SET
+        last_error=?,
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `)
+      .bind(
+        `HTTP ${response.status}: ${String(detail || "").slice(0, 180)}`,
+        subscription.id
+      )
+      .run();
+  }
+
+  return {
+    ok:false,
+    status:response.status,
+    error:
+      String(detail || "")
+        .slice(0, 240)
+  };
+}
+
+async function sendWebPushEvent(
+  env,
+  event
+) {
+  await ensureWebPushTables(env);
+
+  const existing =
+    await env.DB.prepare(`
+      SELECT
+        event_key,
+        status
+      FROM web_push_events
+      WHERE event_key=?
+      LIMIT 1
+    `)
+      .bind(event.eventKey)
+      .first();
+
+  if (existing?.status === "SENT") {
+    return {
+      ok:true,
+      status:"ALREADY_SENT",
+      sent:0,
+      failed:0
+    };
+  }
+
+  const subscriptionsResult =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        endpoint
+      FROM web_push_subscriptions
+      WHERE enabled=1
+      ORDER BY id ASC
+    `).all();
+
+  const subscriptions =
+    subscriptionsResult.results || [];
+
+  if (!subscriptions.length) {
+    return {
+      ok:true,
+      status:"NO_SUBSCRIBERS",
+      sent:0,
+      failed:0
+    };
+  }
+
+  await env.DB.prepare(`
+    INSERT INTO web_push_events (
+      event_key,
+      event_type,
+      title,
+      body,
+      target_url,
+      status,
+      sent_count,
+      failed_count,
+      error_text,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 'PENDING', 0, 0, NULL, CURRENT_TIMESTAMP)
+
+    ON CONFLICT(event_key)
+    DO UPDATE SET
+      event_type=excluded.event_type,
+      title=excluded.title,
+      body=excluded.body,
+      target_url=excluded.target_url,
+      updated_at=CURRENT_TIMESTAMP
+  `)
+    .bind(
+      event.eventKey,
+      event.eventType,
+      event.title,
+      event.body,
+      event.targetUrl || "/api/s-picks-view"
+    )
+    .run();
+
+  const vapid =
+    await ensureWebPushVapid(env);
+
+  let sent = 0;
+  let failed = 0;
+  const errors = [];
+
+  for (const subscription of subscriptions) {
+    try {
+      const result =
+        await sendEmptyWebPush(
+          env,
+          subscription,
+          vapid
+        );
+
+      if (result.ok) {
+        sent++;
+      } else {
+        failed++;
+        errors.push(
+          `HTTP ${result.status}`
+        );
+      }
+    } catch (error) {
+      failed++;
+      errors.push(
+        error?.message ||
+        String(error)
+      );
+    }
+  }
+
+  const status =
+    sent > 0
+      ? "SENT"
+      : "ERROR";
+
+  await env.DB.prepare(`
+    UPDATE web_push_events
+    SET
+      status=?,
+      sent_count=?,
+      failed_count=?,
+      error_text=?,
+      updated_at=CURRENT_TIMESTAMP
+    WHERE event_key=?
+  `)
+    .bind(
+      status,
+      sent,
+      failed,
+      errors.length
+        ? errors.slice(0, 5).join(" | ")
+        : null,
+      event.eventKey
+    )
+    .run();
+
+  return {
+    ok:sent > 0,
+    status,
+    sent,
+    failed,
+    errors
+  };
+}
+
+async function runWebPushNotifications(
+  env,
+  raceDate = todayJST()
+) {
+  await ensureWebPushTables(env);
+
+  if (!WEB_PUSH_S_BET_ENABLED) {
+    return {
+      ok:true,
+      status:"DISABLED",
+      candidates:0,
+      sent:0,
+      failed:0
+    };
+  }
+
+  const picks =
+    (await listSLinePredictions(
+      env,
+      raceDate
+    ))
+      .filter(
+        pick =>
+          pick.decision === "BET"
+      );
+
+  let candidates = 0;
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  const now = Date.now();
+
+  for (const pick of picks) {
+    let minutesUntil = null;
+
+    if (pick.deadlineJST) {
+      const ms =
+        new Date(
+          pick.deadlineJST
+        ).getTime();
+
+      if (Number.isFinite(ms)) {
+        minutesUntil =
+          (ms - now) / 60000;
+      }
+    }
+
+    if (
+      minutesUntil !== null &&
+      (
+        minutesUntil <= 0 ||
+        minutesUntil > WEB_PUSH_FINAL_MAX_MINUTES
+      )
+    ) {
+      skipped++;
+      continue;
+    }
+
+    candidates++;
+
+    const score =
+      pick.stableScore == null
+        ? "-"
+        : Number(pick.stableScore).toFixed(1);
+
+    const result =
+      await sendWebPushEvent(
+        env,
+        {
+          eventKey:
+            `SBET:${pick.raceKey}`,
+          eventType:"S_BET",
+          title:
+            `🔥 S勝負｜${pick.venue} ${pick.rno}R`,
+          body:
+            `締切 ${pick.deadline || "-"}｜Sスコア ${score}｜タップして本線6点＋押さえ4点を確認`,
+          targetUrl:
+            "/api/s-picks-view"
+        }
+      );
+
+    if (result.status === "SENT") {
+      sent += Number(result.sent || 0);
+    } else if (result.status === "ERROR") {
+      failed += Number(result.failed || 1);
+    }
+  }
+
+  return {
+    ok:failed === 0,
+    status:
+      failed > 0
+        ? "WARN"
+        : "OK",
+    candidates,
+    sent,
+    failed,
+    skipped
+  };
+}
+
+async function runWebPushDailySummary(
+  env,
+  raceDate = todayJST()
+) {
+  if (!WEB_PUSH_DAILY_SUMMARY_ENABLED) {
+    return {
+      ok:true,
+      status:"DISABLED",
+      sent:0
+    };
+  }
+
+  let official;
+
+  try {
+    official =
+      await officialDayEndState(
+        raceDate
+      );
+  } catch (error) {
+    return {
+      ok:false,
+      status:"OFFICIAL_CHECK_ERROR",
+      sent:0,
+      error:
+        error?.message ||
+        String(error)
+    };
+  }
+
+  if (!official.ready) {
+    return {
+      ok:true,
+      status:official.status,
+      sent:0
+    };
+  }
+
+  const learningState =
+    await learningDayResultState(
+      env,
+      raceDate
+    );
+
+  const pendingFallbackMs =
+    official.pendingFallbackAt
+      ? new Date(official.pendingFallbackAt).getTime()
+      : Number.POSITIVE_INFINITY;
+
+  if (
+    learningState.pending > 0 &&
+    Date.now() < pendingFallbackMs
+  ) {
+    return {
+      ok:true,
+      status:"WAIT_RESULTS",
+      sent:0
+    };
+  }
+
+  if (learningState.finished <= 0) {
+    return {
+      ok:true,
+      status:"NO_AI_RESULTS",
+      sent:0
+    };
+  }
+
+  return await sendWebPushEvent(
+    env,
+    {
+      eventKey:
+        `DAILY:${raceDate}`,
+      eventType:"DAILY_SUMMARY",
+      title:
+        "📊 うさLAB｜本日のAI成績",
+      body:
+        `本日の集計が完了しました。AI分析結果 ${learningState.finished}R｜タップして成績を確認`,
+      targetUrl:
+        "/api/s-picks-view"
+    }
+  );
+}
+
+function webPushServiceWorkerJs() {
+  return `
+self.addEventListener('install', function(event){
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', function(event){
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('push', function(event){
+  event.waitUntil((async function(){
+    var meta = {
+      title: '🐰🚤 うさLAB｜競艇AI予想',
+      body: '新しいAI通知があります。タップして確認してください。',
+      targetUrl: '/api/s-picks-view',
+      eventKey: 'usa-lab-latest'
+    };
+
+    try{
+      var response = await fetch('/api/push-latest', {cache:'no-store'});
+      if(response.ok){
+        var data = await response.json();
+        if(data && data.ok && data.event){
+          meta = Object.assign(meta, data.event);
+        }
+      }
+    }catch(e){}
+
+    await self.registration.showNotification(meta.title || '🐰🚤 うさLAB', {
+      body: meta.body || '新しい通知があります',
+      tag: meta.eventKey || 'usa-lab-notification',
+      renotify: true,
+      data: {
+        url: meta.targetUrl || '/api/s-picks-view'
+      }
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', function(event){
+  event.notification.close();
+  var target = (event.notification.data && event.notification.data.url) || '/api/s-picks-view';
+
+  event.waitUntil((async function(){
+    var windows = await clients.matchAll({type:'window', includeUncontrolled:true});
+    for(var i=0;i<windows.length;i++){
+      var client = windows[i];
+      if('focus' in client){
+        try{
+          await client.navigate(target);
+        }catch(e){}
+        return client.focus();
+      }
+    }
+    if(clients.openWindow){
+      return clients.openWindow(target);
+    }
+  })());
+});
+`;
+}
+
+function webPushManifest() {
+  return {
+    name:
+      "うさLAB｜競艇AI予想",
+    short_name:
+      "うさLAB",
+    start_url:
+      "/api/s-picks-view",
+    scope:
+      "/api/",
+    display:
+      "standalone",
+    background_color:
+      "#f7f3ff",
+    theme_color:
+      "#8d72c7",
+    description:
+      "うさLAB 競艇AI予想・S評価一覧"
+  };
+}
+
 /* =========================================================
    LINE自動通知 V6.5.5
    - 当日の保存済み「🔥 S勝負」を毎回D1から再確認
@@ -12028,6 +12925,56 @@ async function runScheduledAutomation(
     };
   }
 
+  let webPushNotify = null;
+  let webPushDaily = null;
+
+  try {
+    webPushNotify =
+      await runWebPushNotifications(
+        env,
+        hd
+      );
+  } catch (error) {
+    const pushError =
+      error?.message ||
+      String(error);
+
+    errors.push(
+      `WEB_PUSH: ${pushError}`
+    );
+
+    webPushNotify = {
+      ok:false,
+      status:"ERROR",
+      sent:0,
+      failed:1,
+      error:pushError
+    };
+  }
+
+  try {
+    webPushDaily =
+      await runWebPushDailySummary(
+        env,
+        hd
+      );
+  } catch (error) {
+    const pushDailyError =
+      error?.message ||
+      String(error);
+
+    errors.push(
+      `WEB_PUSH_DAILY: ${pushDailyError}`
+    );
+
+    webPushDaily = {
+      ok:false,
+      status:"ERROR",
+      sent:0,
+      error:pushDailyError
+    };
+  }
+
   const finishedAt =
     nowJST();
 
@@ -12052,7 +12999,13 @@ async function runScheduledAutomation(
     ||
     dailySummary?.status === "ERROR"
     ||
-    dailySummary?.status === "OFFICIAL_CHECK_ERROR";
+    dailySummary?.status === "OFFICIAL_CHECK_ERROR"
+    ||
+    Number(webPushNotify?.failed || 0) > 0
+    ||
+    webPushDaily?.status === "ERROR"
+    ||
+    webPushDaily?.status === "OFFICIAL_CHECK_ERROR";
 
   const summary = {
     workerVersion:
@@ -12072,6 +13025,8 @@ async function runScheduledAutomation(
     resultUpdate,
     lineNotify,
     dailySummary,
+    webPushNotify,
+    webPushDaily,
     error:
       errors.length
         ? errors.join(
@@ -12268,6 +13223,8 @@ async function automationStatus(env) {
         lineLatest ||
         null
     },
+    webPush:
+      await webPushStatus(env),
     dailySummary:{
       status:
         dailySummaryState?.status ||
@@ -13208,6 +14165,7 @@ function sPicksDashboardHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#8d72c7">
+<link rel="manifest" href="/api/push-manifest.webmanifest">
 <title>うさLAB｜S勝負・S見送り一覧</title>
 <style>
   :root{
@@ -13323,6 +14281,8 @@ function sPicksDashboardHtml() {
       <button id="save">認証して表示</button>
       <button id="refresh" class="secondary">更新</button>
       <button id="lineTest" class="secondary">LINEテスト</button>
+      <button id="pushToggle" class="secondary">🔔 サイト通知ON</button>
+      <button id="pushTest" class="secondary">通知テスト</button>
     </div>
     <div class="filterBar">
       <button class="filterBtn active" data-filter="ALL">全部</button>
@@ -13635,6 +14595,138 @@ function sPicksDashboardHtml() {
     }
   }
 
+  function urlBase64ToUint8Array(base64String){
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g,'+').replace(/_/g,'/');
+    var rawData = atob(base64);
+    return Uint8Array.from(Array.prototype.map.call(rawData,function(char){ return char.charCodeAt(0); }));
+  }
+
+  function pushSupported(){
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  }
+
+  function isStandalone(){
+    return window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+
+  async function getPushRegistration(){
+    return await navigator.serviceWorker.register('/api/push-sw.js',{scope:'/api/'});
+  }
+
+  async function refreshPushButton(){
+    var btn = document.getElementById('pushToggle');
+    if(!btn) return;
+    if(!pushSupported()){
+      btn.textContent = '通知非対応';
+      btn.disabled = true;
+      return;
+    }
+    try{
+      var reg = await getPushRegistration();
+      var sub = await reg.pushManager.getSubscription();
+      btn.textContent = sub ? '🔕 サイト通知OFF' : '🔔 サイト通知ON';
+    }catch(e){
+      btn.textContent = '🔔 サイト通知ON';
+    }
+  }
+
+  async function togglePush(){
+    var token = (tokenInput.value || '').trim() || localStorage.getItem(TOKEN_KEY) || '';
+    if(!token){
+      status.innerHTML = '<span class="error">先にD1_WRITE_TOKENで認証してください</span>';
+      return;
+    }
+    if(!pushSupported()){
+      status.innerHTML = '<span class="error">この端末・ブラウザはWeb Pushに対応していません</span>';
+      return;
+    }
+
+    if(/iPhone|iPad|iPod/i.test(navigator.userAgent) && !isStandalone()){
+      status.textContent = 'iPhoneは共有→「ホーム画面に追加」→ホーム画面のうさLABから開いて通知ONにしてください';
+      return;
+    }
+
+    try{
+      var reg = await getPushRegistration();
+      var current = await reg.pushManager.getSubscription();
+
+      if(current){
+        var endpoint = current.endpoint;
+        await current.unsubscribe();
+        await fetch('/api/push/unsubscribe',{
+          method:'POST',
+          headers:{'authorization':'Bearer ' + token,'content-type':'application/json'},
+          body:JSON.stringify({endpoint:endpoint})
+        });
+        status.textContent = '🔕 サイト通知をOFFにしました';
+        await refreshPushButton();
+        return;
+      }
+
+      var permission = Notification.permission;
+      if(permission !== 'granted'){
+        permission = await Notification.requestPermission();
+      }
+      if(permission !== 'granted'){
+        throw new Error('通知が許可されませんでした');
+      }
+
+      var keyResponse = await fetch('/api/push/public-key',{cache:'no-store'});
+      var keyData = await keyResponse.json();
+      if(!keyResponse.ok || !keyData.ok || !keyData.publicKey){
+        throw new Error(keyData.error || 'Push公開鍵を取得できませんでした');
+      }
+
+      var subscription = await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(keyData.publicKey)
+      });
+
+      var response = await fetch('/api/push/subscribe',{
+        method:'POST',
+        headers:{'authorization':'Bearer ' + token,'content-type':'application/json'},
+        body:JSON.stringify(subscription.toJSON ? subscription.toJSON() : subscription)
+      });
+      var data = await response.json();
+      if(!response.ok || !data.ok){
+        throw new Error(data.error || 'Push購読の保存に失敗しました');
+      }
+
+      localStorage.setItem(TOKEN_KEY,token);
+      status.textContent = '✅ サイト通知をONにしました';
+      await refreshPushButton();
+    }catch(e){
+      status.innerHTML = '<span class="error">' + esc(e.message || String(e)) + '</span>';
+    }
+  }
+
+  async function pushTest(){
+    var token = (tokenInput.value || '').trim() || localStorage.getItem(TOKEN_KEY) || '';
+    if(!token){
+      status.innerHTML = '<span class="error">先にD1_WRITE_TOKENで認証してください</span>';
+      return;
+    }
+    status.textContent = 'サイト通知テスト送信中...';
+    try{
+      var response = await fetch('/api/push-test',{
+        method:'POST',
+        headers:{'authorization':'Bearer ' + token,'content-type':'application/json'}
+      });
+      var data = await response.json();
+      if(!response.ok || !data.ok){
+        throw new Error(data.error || 'サイト通知テストに失敗しました');
+      }
+      if(data.status === 'NO_SUBSCRIBERS'){
+        throw new Error('先に「サイト通知ON」を押してください');
+      }
+      status.textContent = '✅ サイト通知テストを送信しました';
+    }catch(e){
+      status.innerHTML = '<span class="error">' + esc(e.message || String(e)) + '</span>';
+    }
+  }
+
   Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(btn){
     btn.addEventListener('click',function(){
       currentFilter = btn.getAttribute('data-filter') || 'ALL';
@@ -13648,7 +14740,10 @@ function sPicksDashboardHtml() {
   document.getElementById('save').addEventListener('click',load);
   document.getElementById('refresh').addEventListener('click',load);
   document.getElementById('lineTest').addEventListener('click',lineTest);
+  document.getElementById('pushToggle').addEventListener('click',togglePush);
+  document.getElementById('pushTest').addEventListener('click',pushTest);
   tokenInput.value = localStorage.getItem(TOKEN_KEY) || '';
+  refreshPushButton();
   load();
   setInterval(load,60000);
 })();
@@ -13822,7 +14917,19 @@ export default {
             true,
 
           lineMonthlyLimitSaver:
-            true
+            true,
+
+          webPush:
+            true,
+
+          webPushAutoVapid:
+            true,
+
+          webPushSBet:
+            WEB_PUSH_S_BET_ENABLED,
+
+          webPushDailySummary:
+            WEB_PUSH_DAILY_SUMMARY_ENABLED
         });
       }
 
@@ -13936,6 +15043,272 @@ export default {
 
 
       /* ===== S評価 API（🔥S勝負 + ⚠️S見送り） ===== */
+
+      /* ===== Web Push PWA / Service Worker ===== */
+
+      if (
+        url.pathname ===
+        "/api/push-manifest.webmanifest"
+      ) {
+        return new Response(
+          JSON.stringify(
+            webPushManifest()
+          ),
+          {
+            status:200,
+            headers:{
+              "content-type":
+                "application/manifest+json; charset=utf-8",
+              "cache-control":
+                "public, max-age=300"
+            }
+          }
+        );
+      }
+
+      if (
+        url.pathname ===
+        "/api/push-sw.js"
+      ) {
+        return new Response(
+          webPushServiceWorkerJs(),
+          {
+            status:200,
+            headers:{
+              "content-type":
+                "application/javascript; charset=utf-8",
+              "cache-control":
+                "no-cache",
+              "service-worker-allowed":
+                "/api/"
+            }
+          }
+        );
+      }
+
+      if (
+        url.pathname ===
+        "/api/push/public-key"
+      ) {
+        const vapid =
+          await ensureWebPushVapid(env);
+
+        return json({
+          ok:true,
+          publicKey:
+            vapid.public_key
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push-latest"
+      ) {
+        await ensureWebPushTables(env);
+
+        const latestPush =
+          await env.DB.prepare(`
+            SELECT
+              event_key,
+              event_type,
+              title,
+              body,
+              target_url,
+              updated_at
+            FROM web_push_events
+            WHERE status='SENT'
+            ORDER BY updated_at DESC
+            LIMIT 1
+          `).first();
+
+        return json({
+          ok:true,
+          event:
+            latestPush
+              ? {
+                  eventKey:
+                    latestPush.event_key,
+                  eventType:
+                    latestPush.event_type,
+                  title:
+                    latestPush.title,
+                  body:
+                    latestPush.body,
+                  targetUrl:
+                    latestPush.target_url,
+                  updatedAt:
+                    latestPush.updated_at
+                }
+              : null
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push/subscribe"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        if (request.method !== "POST") {
+          return json(
+            {
+              ok:false,
+              error:"POSTで送信してください"
+            },
+            405
+          );
+        }
+
+        const body =
+          await request.json();
+
+        await saveWebPushSubscription(
+          env,
+          body
+        );
+
+        const status =
+          await webPushStatus(env);
+
+        return json({
+          ok:true,
+          subscribed:true,
+          enabledSubscriptions:
+            status.enabled
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push/unsubscribe"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        if (request.method !== "POST") {
+          return json(
+            {
+              ok:false,
+              error:"POSTで送信してください"
+            },
+            405
+          );
+        }
+
+        const body =
+          await request.json();
+
+        await disableWebPushSubscription(
+          env,
+          body?.endpoint
+        );
+
+        return json({
+          ok:true,
+          subscribed:false
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push-status"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+          ...(
+            await webPushStatus(env)
+          )
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push-test"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        const eventKey =
+          `TEST:${Date.now()}`;
+
+        const result =
+          await sendWebPushEvent(
+            env,
+            {
+              eventKey,
+              eventType:"TEST",
+              title:
+                "✅ うさLAB｜サイト通知テスト",
+              body:
+                "サイトからのPush通知は正常です。S勝負が出たらここに届きます。",
+              targetUrl:
+                "/api/s-picks-view"
+            }
+          );
+
+        return json({
+          ok:
+            result.status !== "ERROR",
+          ...result
+        });
+      }
+
+      if (
+        url.pathname ===
+        "/api/push-notify-run"
+      ) {
+        const authError =
+          checkPrivateAccess(
+            request,
+            env
+          );
+
+        if (authError) {
+          return authError;
+        }
+
+        return json({
+          ok:true,
+          ...(
+            await runWebPushNotifications(
+              env,
+              todayJST()
+            )
+          )
+        });
+      }
 
       if (
         url.pathname ===
