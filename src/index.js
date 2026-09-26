@@ -1,7 +1,7 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.7";
-const AI_VERSION = "6.7.3";
+const WORKER_VERSION = "6.6.13";
+const AI_VERSION = "6.7.5";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
@@ -1411,7 +1411,7 @@ function parseOdd(
 
   return Number.isFinite(
     n
-  )
+  ) && n > 0
     ? n
     : null;
 }
@@ -5811,12 +5811,10 @@ function makeOddsMap(
     const item of
     oddsData?.odds || []
   ) {
-    map[
-      item.combination
-    ] =
-      Number(
-        item.odds
-      );
+    const odds = Number(item.odds);
+    if (Number.isFinite(odds) && odds > 0) {
+      map[item.combination] = odds;
+    }
   }
 
   return map;
@@ -5862,7 +5860,7 @@ function evaluateBets(
       );
 
     if (
-      odds === null
+      odds === null || odds <= 0
     ) {
       continue;
     }
