@@ -1,11 +1,22 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.4";
+const WORKER_VERSION = "6.6.5";
 const AI_VERSION = "6.7.2";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
 const LINE_FINAL_MAX_MINUTES = 35;
+
+/*
+  LINE月間送信数を節約する運用モード
+  - 早期通知OFF
+  - S見送り通知OFF
+  - S勝負の最終通知だけ送信
+  - 日次集計は1日1回のまま
+*/
+const LINE_EARLY_NOTIFICATIONS_ENABLED = false;
+const LINE_PASS_NOTIFICATIONS_ENABLED = false;
+const LINE_DAILY_SUMMARY_ENABLED = true;
 
 /* =========================
    共通
@@ -6262,6 +6273,30 @@ function makeSDecision(
         0
       );
 
+  /*
+    7〜10位は「押さえ4点」として表示・検証する。
+    S判定そのものは従来の上位6点基準を維持し、
+    過去成績との比較可能性を壊さない。
+  */
+  const rawTop10Probability =
+    allBets
+      .slice(
+        0,
+        10
+      )
+      .reduce(
+        (
+          sum,
+          bet
+        ) =>
+          sum +
+          Number(
+            bet.probability ||
+            0
+          ),
+        0
+      );
+
   const secondStable =
     roleStability(
       racers,
@@ -6453,6 +6488,14 @@ function makeSDecision(
   const top6Probability =
     clamp(
       rawTop6Probability *
+      calibrationFactor,
+      0,
+      1
+    );
+
+  const top10Probability =
+    clamp(
+      rawTop10Probability *
       calibrationFactor,
       0,
       1
@@ -6733,6 +6776,10 @@ function makeSDecision(
       rawTop6Probability,
 
       top6Probability,
+
+      rawTop10Probability,
+
+      top10Probability,
 
       calibrationFactor,
 
@@ -7814,6 +7861,62 @@ async function buildServerPrediction(
 }
 
 /* =========================
+   上位N点の補正後確率
+   - 新規予想は sDecision.metrics.top10Probability を保存
+   - 旧予想は bets の確率合計 × calibrationFactor で補完
+========================= */
+
+function snapshotTopNProbability(
+  snapshot,
+  n
+) {
+  const bets =
+    Array.isArray(
+      snapshot?.bets
+    )
+      ? snapshot.bets
+      : [];
+
+  if (!bets.length) {
+    return null;
+  }
+
+  const raw =
+    bets
+      .slice(
+        0,
+        Number(n || 0)
+      )
+      .reduce(
+        (
+          sum,
+          bet
+        ) =>
+          sum +
+          Number(
+            bet?.probability ||
+            0
+          ),
+        0
+      );
+
+  const factor =
+    Number(
+      snapshot?.sDecision
+        ?.metrics
+        ?.calibrationFactor ||
+      1
+    );
+
+  return clamp(
+    raw * factor,
+    0,
+    1
+  );
+}
+
+
+/* =========================
    note 信頼度
 ========================= */
 
@@ -7939,6 +8042,26 @@ function buildNoteArticle(
         "\n"
       );
 
+  const cover =
+    snapshot.bets
+      .slice(
+        6,
+        10
+      )
+      .map(
+        (
+          bet,
+          index
+        ) =>
+          `${index + 7}. ${bet.combination}` +
+          `｜AI ${bet.totalScore}` +
+          `｜オッズ ${bet.odds}倍`
+      )
+      .join(
+        "\n"
+      ) ||
+    "該当なし";
+
   const holes =
     snapshot.holeBets
       ?.length
@@ -7978,6 +8101,7 @@ function buildNoteArticle(
           `S安定スコア：${snapshot.sDecision.score}`,
           `1着候補推定力：${(metrics.firstShare * 100).toFixed(1)}%`,
           `上位6点確率：${(metrics.top6Probability * 100).toFixed(1)}%`,
+          `10点内確率：${((metrics.top10Probability ?? snapshotTopNProbability(snapshot, 10) ?? 0) * 100).toFixed(1)}%`,
           `1着点差：${metrics.firstGap.toFixed(1)}`,
           `2着安定度：${Math.round(metrics.secondStability)}`,
           `3着安定度：${Math.round(metrics.thirdStability)}`,
@@ -8019,10 +8143,16 @@ ${topRacer ? `${topRacer.lane}号艇 ${topRacer.name}` : "-"}
 
 ${notice}
 ━━━━━━━━━━━━━━
-■ 本線3連単
+■ 本線3連単 6点
 ━━━━━━━━━━━━━━
 
 ${main}
+
+━━━━━━━━━━━━━━
+■ 押さえ4点（7〜10位）
+━━━━━━━━━━━━━━
+
+${cover}
 
 ━━━━━━━━━━━━━━
 ■ 穴狙い
@@ -9495,6 +9625,18 @@ async function updatePredictionResult(
       6
     );
 
+  const main10 =
+    main15.slice(
+      0,
+      10
+    );
+
+  const cover4 =
+    main15.slice(
+      6,
+      10
+    );
+
   const holes =
     Array.isArray(
       snapshot.holeBets
@@ -9504,6 +9646,20 @@ async function updatePredictionResult(
 
   const main6Hit =
     main6.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const main10Hit =
+    main10.some(
+      bet =>
+        bet.combination ===
+        combination
+    );
+
+  const cover4Hit =
+    cover4.some(
       bet =>
         bet.combination ===
         combination
@@ -9542,6 +9698,8 @@ async function updatePredictionResult(
       raceResult.payout,
 
     main6Hit,
+    main10Hit,
+    cover4Hit,
     main15Hit,
     holeHit,
     hit
@@ -9571,6 +9729,8 @@ async function updatePredictionResult(
       true,
 
     main6Hit,
+    main10Hit,
+    cover4Hit,
     main15Hit,
     holeHit,
     hit
@@ -10025,10 +10185,25 @@ function buildLineSBetMessage(pick) {
               `${index + 1}. ${bet.combination}` +
               (bet.odds != null
                 ? `（${bet.odds}倍）`
-                : "")
+                : "（オッズ未取得）")
           )
           .join("\n")
       : "-";
+
+  const cover =
+    Array.isArray(pick.cover4) &&
+    pick.cover4.length
+      ? pick.cover4
+          .slice(0, 4)
+          .map(
+            (bet, index) =>
+              `${index + 7}. ${bet.combination}` +
+              (bet.odds != null
+                ? `（${bet.odds}倍）`
+                : "（オッズ未取得）")
+          )
+          .join("\n")
+      : "なし";
 
   const holes =
     Array.isArray(pick.holes) &&
@@ -10040,7 +10215,7 @@ function buildLineSBetMessage(pick) {
               `${bet.combination}` +
               (bet.odds != null
                 ? `（${bet.odds}倍）`
-                : "")
+                : "（オッズ未取得）")
           )
           .join(" / ")
       : "なし";
@@ -10055,6 +10230,11 @@ function buildLineSBetMessage(pick) {
       ? "-"
       : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
 
+  const top10 =
+    pick.top10Probability == null
+      ? "-"
+      : `${(Number(pick.top10Probability) * 100).toFixed(1)}%`;
+
   return `🐰🚤 うさLAB｜競艇AI予想
 
 🔥 S勝負が出ました
@@ -10064,10 +10244,14 @@ ${pick.venue} ${pick.rno}R
 Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
 1着推定力：${share}
 上位6点確率：${top6}
+10点内確率：${top10}
 戦略：${pick.strategy || "-"}
 
 【本線6点】
 ${main}
+
+【押さえ4点（7〜10位）】
+${cover}
 
 【穴候補】
 ${holes}
@@ -10089,10 +10273,25 @@ function buildLineSPassMessage(pick) {
               `${index + 1}. ${bet.combination}` +
               (bet.odds != null
                 ? `（${bet.odds}倍）`
-                : "")
+                : "（オッズ未取得）")
           )
           .join("\n")
       : "-";
+
+  const cover =
+    Array.isArray(pick.cover4) &&
+    pick.cover4.length
+      ? pick.cover4
+          .slice(0, 4)
+          .map(
+            (bet, index) =>
+              `${index + 7}. ${bet.combination}` +
+              (bet.odds != null
+                ? `（${bet.odds}倍）`
+                : "（オッズ未取得）")
+          )
+          .join("\n")
+      : "なし";
 
   const holes =
     Array.isArray(pick.holes) &&
@@ -10107,7 +10306,7 @@ function buildLineSPassMessage(pick) {
                 : "") +
               (bet.odds != null
                 ? `｜${bet.odds}倍`
-                : "")
+                : "｜オッズ未取得")
           )
           .join("\n")
       : "なし";
@@ -10121,6 +10320,11 @@ function buildLineSPassMessage(pick) {
     pick.top6Probability == null
       ? "-"
       : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
+
+  const top10 =
+    pick.top10Probability == null
+      ? "-"
+      : `${(Number(pick.top10Probability) * 100).toFixed(1)}%`;
 
   const reasons =
     Array.isArray(pick.reasons) &&
@@ -10143,10 +10347,14 @@ ${pick.venue} ${pick.rno}R
 Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
 1着推定力：${share}
 上位6点確率：${top6}
+10点内確率：${top10}
 戦略：${pick.strategy || "-"}
 
 【本線6点】
 ${main}
+
+【押さえ4点（7〜10位）】
+${cover}
 
 【穴候補】
 ${holes}
@@ -10173,6 +10381,11 @@ function buildLineEarlyMessage(pick) {
       ? "-"
       : `${(Number(pick.top6Probability) * 100).toFixed(1)}%`;
 
+  const top10 =
+    pick.top10Probability == null
+      ? "-"
+      : `${(Number(pick.top10Probability) * 100).toFixed(1)}%`;
+
   const current =
     pick.decision === "BET"
       ? "🔥 S勝負"
@@ -10188,10 +10401,10 @@ ${pick.venue} ${pick.rno}R
 Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
 1着推定力：${share}
 上位6点確率：${top6}
+10点内確率：${top10}
 戦略：${pick.strategy || "-"}
 
-締切35分以内になったら、
-🔥 S勝負 / ⚠️ S見送り の最終LINEをもう一度送ります。
+締切35分以内になったら最終LINEを送ります。
 
 ※オッズ・直前情報の変化により内容が変わる場合があります。`;
 }
@@ -10527,6 +10740,26 @@ async function listSLinePredictions(
               )
           : [];
 
+      const cover4 =
+        Array.isArray(
+          snapshot.bets
+        )
+          ? snapshot.bets
+              .slice(6, 10)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+                  totalScore:
+                    bet.totalScore ?? null,
+                  odds:
+                    bet.odds ?? null,
+                  probability:
+                    bet.probability ?? null
+                })
+              )
+          : [];
+
       const holes =
         Array.isArray(
           snapshot.holeBets
@@ -10586,6 +10819,14 @@ async function listSLinePredictions(
           snapshot.sDecision
             ?.metrics
             ?.top6Probability ?? null,
+        top10Probability:
+          snapshot.sDecision
+            ?.metrics
+            ?.top10Probability ??
+          snapshotTopNProbability(
+            snapshot,
+            10
+          ),
         firstGap:
           snapshot.sDecision
             ?.metrics
@@ -10599,6 +10840,7 @@ async function listSLinePredictions(
                 .reasons
             : [],
         main6,
+        cover4,
         holes,
         updatedAt:
           row.updated_at
@@ -10634,17 +10876,25 @@ async function runLineNotifications(
   }
 
   /*
-    V6.5.5:
-    - S勝負だけでなくS見送りも対象
-    - 35〜50分前は「早め通知」
-    - 35分以内は最終通知
-    - 同じレースでも早め通知と最終通知は別管理
-    - S勝負の既存送信履歴はV6.5.4から引き継ぐ
+    V6.6.5 LINE節約モード:
+    - 自動通知はS勝負の最終通知だけ
+    - 早期通知は停止
+    - S見送り通知は停止
+    - 日次集計は別処理で1日1回のみ
+    - ダッシュボードにはS見送りも従来どおり残す
   */
-  const picks =
+  const allPicks =
     await listSLinePredictions(
       env,
       raceDate
+    );
+
+  const picks =
+    allPicks.filter(
+      pick =>
+        LINE_PASS_NOTIFICATIONS_ENABLED
+        ||
+        pick.decision === "BET"
     );
 
   const stateMap =
@@ -10769,7 +11019,25 @@ async function runLineNotifications(
       continue;
     }
 
+    /*
+      早期通知OFF時は、締切35分より前ならまだ送らない。
+      これで1レースにつきS勝負の最終通知1通だけにする。
+    */
+    if (
+      !LINE_EARLY_NOTIFICATIONS_ENABLED
+      &&
+      minutesUntil !== null
+      &&
+      minutesUntil >
+        LINE_FINAL_MAX_MINUTES
+    ) {
+      skipped++;
+      continue;
+    }
+
     const stage =
+      LINE_EARLY_NOTIFICATIONS_ENABLED
+      &&
       minutesUntil !== null
       &&
       minutesUntil >
@@ -11281,7 +11549,7 @@ async function bestCandidateHitForDate(
 
     if (
       !check ||
-      (!check.main6Hit && !check.holeHit)
+      (!check.main10Hit && !check.holeHit)
     ) {
       continue;
     }
@@ -11306,7 +11574,9 @@ async function bestCandidateHitForDate(
         type:
           check.main6Hit
             ? "本線6点"
-            : "穴候補"
+            : check.cover4Hit
+              ? "押さえ4点"
+              : "穴候補"
       };
     }
   }
@@ -11349,7 +11619,7 @@ function buildDailySummaryMessage(
   const bestText =
     bestHit
       ? `${bestHit.venue} ${bestHit.rno}R\n${bestHit.combination}｜${bestHit.payout.toLocaleString("ja-JP")}円（${bestHit.type}）`
-      : "本線6点・穴候補内の的中なし";
+      : "本線10点・穴候補内の的中なし";
 
   return `🐰🚤 うさLAB｜本日のAI成績
 ${formatJapaneseDateKey(raceDate)}
@@ -11361,26 +11631,28 @@ AI分析結果確定：${learningState.finished}R${learningState.pending > 0 ? `
 🔥 S勝負
 対象：${stats.sBetRaces}R
 本線6点：${formatRateLine(stats.sBetMain6Hits, stats.sBetRaces)}
-穴候補：${formatRateLine(stats.sBetHoleHits, stats.sBetRaces)}
-本線＋穴：${formatRateLine(stats.sBetCandidateHits, stats.sBetRaces)}
+10点（6＋押さえ4）：${formatRateLine(stats.sBetMain10Hits, stats.sBetRaces)}
+10点＋穴：${formatRateLine(stats.sBetMain10PlusHoleHits, stats.sBetRaces)}
 
 ⚠️ S見送り
 対象：${stats.sPassRaces}R
 本線6点：${formatRateLine(stats.sPassMain6Hits, stats.sPassRaces)}
+10点（6＋押さえ4）：${formatRateLine(stats.sPassMain10Hits, stats.sPassRaces)}
 🎯 穴候補：${formatRateLine(stats.sPassHoleHits, stats.sPassRaces)}
-本線＋穴：${formatRateLine(stats.sPassCandidateHits, stats.sPassRaces)}
+10点＋穴：${formatRateLine(stats.sPassMain10PlusHoleHits, stats.sPassRaces)}
 
 ★★★★★
 対象：${stats.fiveStarRaces}R
 本線6点：${formatRateLine(stats.fiveStarMain6Hits, stats.fiveStarRaces)}
-本線＋穴：${formatRateLine(stats.fiveStarCandidateHits, stats.fiveStarRaces)}
+10点（6＋押さえ4）：${formatRateLine(stats.fiveStarMain10Hits, stats.fiveStarRaces)}
 
 🏆 今日の最高的中払戻
 ${bestText}
 
 📊 全AI分析
 本線6点：${formatRateLine(stats.main6Hits, stats.races)}
-本線＋穴：${formatRateLine(stats.candidateHits, stats.races)}
+10点（6＋押さえ4）：${formatRateLine(stats.main10Hits, stats.races)}
+10点＋穴：${formatRateLine(stats.main10PlusHoleHits, stats.races)}
 
 ※払戻金は100円購入時の公式払戻額です。
 ※実際の購入金額・利益・収支を示すものではありません。
@@ -11709,21 +11981,33 @@ async function runScheduledAutomation(
     null;
 
   try {
-    dailySummary =
-      compactDailySummary(
-        await runDailySummaryNotification(
-          env,
-          hd
-        )
-      );
-
     if (
-      dailySummary?.status === "ERROR" ||
-      dailySummary?.status === "OFFICIAL_CHECK_ERROR"
+      LINE_DAILY_SUMMARY_ENABLED
     ) {
-      errors.push(
-        `DAILY_SUMMARY: ${dailySummary.error || dailySummary.status}`
-      );
+      dailySummary =
+        compactDailySummary(
+          await runDailySummaryNotification(
+            env,
+            hd
+          )
+        );
+
+      if (
+        dailySummary?.status === "ERROR" ||
+        dailySummary?.status === "OFFICIAL_CHECK_ERROR"
+      ) {
+        errors.push(
+          `DAILY_SUMMARY: ${dailySummary.error || dailySummary.status}`
+        );
+      }
+    } else {
+      dailySummary = {
+        configured:
+          lineNotificationConfigured(env),
+        status:
+          "DISABLED",
+        sent:false
+      };
     }
 
   } catch (error) {
@@ -11947,6 +12231,14 @@ async function automationStatus(env) {
     lineNotification:{
       configured:
         lineNotificationConfigured(env),
+      mode:
+        "S_BET_FINAL_ONLY",
+      earlyEnabled:
+        LINE_EARLY_NOTIFICATIONS_ENABLED,
+      passEnabled:
+        LINE_PASS_NOTIFICATIONS_ENABLED,
+      dailySummaryEnabled:
+        LINE_DAILY_SUMMARY_ENABLED,
       todaySent:
         Number(
           lineToday?.sent_count ||
@@ -12044,6 +12336,18 @@ function resultCheckFromStoredResult(
       6
     );
 
+  const main10 =
+    main15.slice(
+      0,
+      10
+    );
+
+  const cover4 =
+    main15.slice(
+      6,
+      10
+    );
+
   const holes =
     Array.isArray(
       snapshot?.holeBets
@@ -12053,6 +12357,20 @@ function resultCheckFromStoredResult(
 
   const main6Hit =
     main6.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const main10Hit =
+    main10.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const cover4Hit =
+    cover4.some(
       bet =>
         bet?.combination ===
         combination
@@ -12084,11 +12402,13 @@ function resultCheckFromStoredResult(
       null,
 
     main6Hit,
+    main10Hit,
+    cover4Hit,
     main15Hit,
     holeHit,
 
     hit:
-      main6Hit ||
+      main10Hit ||
       main15Hit ||
       holeHit
   };
@@ -12173,6 +12493,29 @@ async function listSBetPredictions(
         )
           ? snapshot.bets
               .slice(0, 6)
+              .map(
+                bet => ({
+                  combination:
+                    bet.combination,
+
+                  totalScore:
+                    bet.totalScore ?? null,
+
+                  odds:
+                    bet.odds ?? null,
+
+                  probability:
+                    bet.probability ?? null
+                })
+              )
+          : [];
+
+      const cover4 =
+        Array.isArray(
+          snapshot.bets
+        )
+          ? snapshot.bets
+              .slice(6, 10)
               .map(
                 bet => ({
                   combination:
@@ -12290,6 +12633,14 @@ async function listSBetPredictions(
           snapshot.sDecision
             ?.metrics
             ?.top6Probability ?? null,
+        top10Probability:
+          snapshot.sDecision
+            ?.metrics
+            ?.top10Probability ??
+          snapshotTopNProbability(
+            snapshot,
+            10
+          ),
 
         firstGap:
           snapshot.sDecision
@@ -12306,6 +12657,7 @@ async function listSBetPredictions(
             : [],
 
         main6,
+        cover4,
         holes,
 
         result:
@@ -12357,22 +12709,29 @@ function blankPerformanceBucket() {
   return {
     races:0,
     main6Hits:0,
+    main10Hits:0,
     main15Hits:0,
     holeHits:0,
     candidateHits:0,
+    main10PlusHoleHits:0,
 
     sBetRaces:0,
     sBetMain6Hits:0,
+    sBetMain10Hits:0,
     sBetHoleHits:0,
     sBetCandidateHits:0,
+    sBetMain10PlusHoleHits:0,
 
     sPassRaces:0,
     sPassMain6Hits:0,
+    sPassMain10Hits:0,
     sPassHoleHits:0,
     sPassCandidateHits:0,
+    sPassMain10PlusHoleHits:0,
 
     fiveStarRaces:0,
     fiveStarMain6Hits:0,
+    fiveStarMain10Hits:0,
     fiveStarCandidateHits:0
   };
 }
@@ -12398,9 +12757,21 @@ function finalizePerformanceBucket(
         bucket.races
       ),
 
+    main10HitRate:
+      performanceRate(
+        bucket.main10Hits,
+        bucket.races
+      ),
+
     main15HitRate:
       performanceRate(
         bucket.main15Hits,
+        bucket.races
+      ),
+
+    main10PlusHoleHitRate:
+      performanceRate(
+        bucket.main10PlusHoleHits,
         bucket.races
       ),
 
@@ -12422,9 +12793,21 @@ function finalizePerformanceBucket(
         bucket.sBetRaces
       ),
 
+    sBetMain10HitRate:
+      performanceRate(
+        bucket.sBetMain10Hits,
+        bucket.sBetRaces
+      ),
+
     sBetHoleHitRate:
       performanceRate(
         bucket.sBetHoleHits,
+        bucket.sBetRaces
+      ),
+
+    sBetMain10PlusHoleHitRate:
+      performanceRate(
+        bucket.sBetMain10PlusHoleHits,
         bucket.sBetRaces
       ),
 
@@ -12440,9 +12823,21 @@ function finalizePerformanceBucket(
         bucket.sPassRaces
       ),
 
+    sPassMain10HitRate:
+      performanceRate(
+        bucket.sPassMain10Hits,
+        bucket.sPassRaces
+      ),
+
     sPassHoleHitRate:
       performanceRate(
         bucket.sPassHoleHits,
+        bucket.sPassRaces
+      ),
+
+    sPassMain10PlusHoleHitRate:
+      performanceRate(
+        bucket.sPassMain10PlusHoleHits,
         bucket.sPassRaces
       ),
 
@@ -12455,6 +12850,12 @@ function finalizePerformanceBucket(
     fiveStarMain6HitRate:
       performanceRate(
         bucket.fiveStarMain6Hits,
+        bucket.fiveStarRaces
+      ),
+
+    fiveStarMain10HitRate:
+      performanceRate(
+        bucket.fiveStarMain10Hits,
         bucket.fiveStarRaces
       ),
 
@@ -12504,6 +12905,12 @@ function addPerformanceResult(
       6
     );
 
+  const main10 =
+    main15.slice(
+      0,
+      10
+    );
+
   const holes =
     Array.isArray(
       snapshot?.holeBets
@@ -12513,6 +12920,13 @@ function addPerformanceResult(
 
   const main6Hit =
     main6.some(
+      bet =>
+        bet?.combination ===
+        combination
+    );
+
+  const main10Hit =
+    main10.some(
       bet =>
         bet?.combination ===
         combination
@@ -12534,6 +12948,10 @@ function addPerformanceResult(
 
   const candidateHit =
     main6Hit ||
+    holeHit;
+
+  const main10PlusHoleHit =
+    main10Hit ||
     holeHit;
 
   const isS =
@@ -12564,8 +12982,16 @@ function addPerformanceResult(
     bucket.main6Hits++;
   }
 
+  if (main10Hit) {
+    bucket.main10Hits++;
+  }
+
   if (main15Hit) {
     bucket.main15Hits++;
+  }
+
+  if (main10PlusHoleHit) {
+    bucket.main10PlusHoleHits++;
   }
 
   if (holeHit) {
@@ -12583,8 +13009,16 @@ function addPerformanceResult(
       bucket.sBetMain6Hits++;
     }
 
+    if (main10Hit) {
+      bucket.sBetMain10Hits++;
+    }
+
     if (holeHit) {
       bucket.sBetHoleHits++;
+    }
+
+    if (main10PlusHoleHit) {
+      bucket.sBetMain10PlusHoleHits++;
     }
 
     if (candidateHit) {
@@ -12599,8 +13033,16 @@ function addPerformanceResult(
       bucket.sPassMain6Hits++;
     }
 
+    if (main10Hit) {
+      bucket.sPassMain10Hits++;
+    }
+
     if (holeHit) {
       bucket.sPassHoleHits++;
+    }
+
+    if (main10PlusHoleHit) {
+      bucket.sPassMain10PlusHoleHits++;
     }
 
     if (candidateHit) {
@@ -12613,6 +13055,10 @@ function addPerformanceResult(
 
     if (main6Hit) {
       bucket.fiveStarMain6Hits++;
+    }
+
+    if (main10Hit) {
+      bucket.fiveStarMain10Hits++;
     }
 
     if (candidateHit) {
@@ -12837,7 +13283,7 @@ function sPicksDashboardHtml() {
   .badge{font-size:13px;font-weight:800;color:#fff;background:var(--hot);border-radius:999px;padding:7px 10px;white-space:nowrap}
   .badge.pass{background:var(--pass)}
   .meta{margin-top:7px;color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
-  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px}
   .metric{background:var(--accent2);border-radius:12px;padding:10px;text-align:center}
   .card.pass .metric{background:var(--passbg)}
   .metric b{display:block;font-size:17px;margin-top:2px}
@@ -12859,7 +13305,7 @@ function sPicksDashboardHtml() {
   .empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:32px 16px;text-align:center;color:var(--muted)}
   .error{color:#b4364c}
   @media(max-width:520px){
-    .metrics{grid-template-columns:repeat(3,1fr);padding-left:12px;padding-right:12px}
+    .metrics{grid-template-columns:repeat(2,1fr);padding-left:12px;padding-right:12px}
     .bets{grid-template-columns:1fr 1fr}
     .metric{padding:9px 5px}
     .metric b{font-size:15px}
@@ -12959,32 +13405,36 @@ function sPicksDashboardHtml() {
       var s = item[1] || {};
       var races = Number(s.races || 0);
       var main6 = Number(s.main6Hits || 0);
-      var candidate = Number(s.candidateHits || 0);
+      var main10 = Number(s.main10Hits || 0);
 
       var sRaces = Number(s.sBetRaces || 0);
-      var sHits = Number(s.sBetMain6Hits || 0);
+      var sHits6 = Number(s.sBetMain6Hits || 0);
+      var sHits10 = Number(s.sBetMain10Hits || 0);
 
       var passRaces = Number(s.sPassRaces || 0);
-      var passMain = Number(s.sPassMain6Hits || 0);
+      var passMain6 = Number(s.sPassMain6Hits || 0);
+      var passMain10 = Number(s.sPassMain10Hits || 0);
       var passHole = Number(s.sPassHoleHits || 0);
-      var passCandidate = Number(s.sPassCandidateHits || 0);
 
       var fiveRaces = Number(s.fiveStarRaces || 0);
-      var fiveHits = Number(s.fiveStarMain6Hits || 0);
+      var fiveHits6 = Number(s.fiveStarMain6Hits || 0);
+      var fiveHits10 = Number(s.fiveStarMain10Hits || 0);
 
       return '<div class="perfCard">' +
         '<h3>📊 ' + esc(label) + '</h3>' +
         '<div class="perfBig">' + races + 'R</div>' +
         '<div class="perfRow"><span>本線6点</span><b>' + main6 + '/' + races + '（' + rateText(s.main6HitRate) + '）</b></div>' +
-        '<div class="perfRow"><span>本線6点＋穴</span><b>' + candidate + '/' + races + '（' + rateText(s.candidateHitRate) + '）</b></div>' +
-        '<div class="perfRow"><span>🔥S勝負 本線6点</span><b>' + sHits + '/' + sRaces + '（' + rateText(s.sBetMain6HitRate) + '）</b></div>' +
-        '<div class="perfRow passRow"><span>⚠️S見送り 本線6点</span><b>' + passMain + '/' + passRaces + '（' + rateText(s.sPassMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>10点（6＋押さえ4）</span><b>' + main10 + '/' + races + '（' + rateText(s.main10HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>🔥S勝負 本線6点</span><b>' + sHits6 + '/' + sRaces + '（' + rateText(s.sBetMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>🔥S勝負 10点</span><b>' + sHits10 + '/' + sRaces + '（' + rateText(s.sBetMain10HitRate) + '）</b></div>' +
+        '<div class="perfRow passRow"><span>⚠️S見送り 本線6点</span><b>' + passMain6 + '/' + passRaces + '（' + rateText(s.sPassMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow passRow"><span>⚠️S見送り 10点</span><b>' + passMain10 + '/' + passRaces + '（' + rateText(s.sPassMain10HitRate) + '）</b></div>' +
         '<div class="perfRow holeRow"><span>🎯S見送り 穴</span><b>' + passHole + '/' + passRaces + '（' + rateText(s.sPassHoleHitRate) + '）</b></div>' +
-        '<div class="perfRow passRow"><span>⚠️S見送り 本線＋穴</span><b>' + passCandidate + '/' + passRaces + '（' + rateText(s.sPassCandidateHitRate) + '）</b></div>' +
-        '<div class="perfRow"><span>★★★★★ 本線6点</span><b>' + fiveHits + '/' + fiveRaces + '（' + rateText(s.fiveStarMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>★★★★★ 本線6点</span><b>' + fiveHits6 + '/' + fiveRaces + '（' + rateText(s.fiveStarMain6HitRate) + '）</b></div>' +
+        '<div class="perfRow"><span>★★★★★ 10点</span><b>' + fiveHits10 + '/' + fiveRaces + '（' + rateText(s.fiveStarMain10HitRate) + '）</b></div>' +
       '</div>';
     }).join('') +
-      '<div class="perfNote">※自動分析→D1保存→結果取得済みのレースだけを集計。S見送りは本線的中と穴的中を別々に集計しています。回収率は実購入額を保存していないため表示していません。</div>';
+      '<div class="perfNote">※本線6点は従来基準を維持。7〜10位を「押さえ4点」として追加し、10点的中率も併記しています。回収率は実購入額を保存していないため表示していません。</div>';
   }
 
   function render(data){
@@ -13022,6 +13472,11 @@ function sPicksDashboardHtml() {
           '<small>AI ' + esc(fmtScore(b.totalScore)) + ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</small></div>';
       }).join('');
 
+      var cover = (p.cover4 || []).map(function(b,i){
+        return '<div class="bet">' + (i+7) + '. ' + esc(b.combination) +
+          '<small>AI ' + esc(fmtScore(b.totalScore)) + ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</small></div>';
+      }).join('');
+
       var holes = (p.holes || []).map(function(b){
         return '<span class="hole">' + esc(b.tier || '穴') + ' ' + esc(b.combination) +
           ' / ' + esc(b.odds == null ? '-' : b.odds + '倍') + '</span>';
@@ -13030,19 +13485,24 @@ function sPicksDashboardHtml() {
       var result = '';
       if(p.resultCheck){
         var rc = p.resultCheck || {};
-        var candidateHit = !!rc.main6Hit || !!rc.holeHit;
 
         var label;
         var resultClass;
 
         if(isPass && rc.main6Hit){
-          label = '✅ S見送り 本線的中';
+          label = '✅ S見送り 本線6点的中';
+          resultClass = 'hit';
+        }else if(isPass && rc.cover4Hit){
+          label = '✅ S見送り 押さえ4点的中';
           resultClass = 'hit';
         }else if(isPass && rc.holeHit){
           label = '🎯 S見送り 穴的中';
           resultClass = 'holehit';
         }else if(rc.main6Hit){
           label = '✅ 本線6点的中';
+          resultClass = 'hit';
+        }else if(rc.cover4Hit){
+          label = '✅ 押さえ4点的中';
           resultClass = 'hit';
         }else if(rc.holeHit){
           label = '🎯 穴候補的中';
@@ -13051,7 +13511,7 @@ function sPicksDashboardHtml() {
           label = '参考：上位15点内';
           resultClass = 'miss';
         }else{
-          label = '❌ 本線6点・穴候補外';
+          label = '❌ 10点・穴候補外';
           resultClass = 'miss';
         }
 
@@ -13068,7 +13528,8 @@ function sPicksDashboardHtml() {
       }
 
       var picksText = (p.venue || '') + ' ' + p.rno + 'R\\n' +
-        (p.main6 || []).map(function(b){ return b.combination; }).join('\\n');
+        (p.main6 || []).map(function(b){ return b.combination; }).join('\\n') +
+        ((p.cover4 || []).length ? '\\n' + (p.cover4 || []).map(function(b){ return b.combination; }).join('\\n') : '');
 
       var badge = isPass
         ? '<div class="badge pass">⚠️ S見送り ' + esc(p.stars || '') + '</div>'
@@ -13083,9 +13544,11 @@ function sPicksDashboardHtml() {
         '<div class="metrics">' +
           '<div class="metric"><span class="label">1着推定力</span><b>' + esc(pct(p.firstShare)) + '</b></div>' +
           '<div class="metric"><span class="label">上位6点確率</span><b>' + esc(pct(p.top6Probability)) + '</b></div>' +
+          '<div class="metric"><span class="label">10点内確率</span><b>' + esc(pct(p.top10Probability)) + '</b></div>' +
           '<div class="metric"><span class="label">1着点差</span><b>' + esc(fmtScore(p.firstGap)) + '</b></div>' +
         '</div>' +
         '<div class="section"><h3>本線6点</h3><div class="bets">' + main + '</div></div>' +
+        (cover ? '<div class="section"><h3>押さえ4点（7〜10位）</h3><div class="bets">' + cover + '</div></div>' : '') +
         (holes ? '<div class="section"><h3>穴候補</h3><div class="holes">' + holes + '</div></div>' : '') +
         reasons +
         result +
@@ -13281,13 +13744,19 @@ export default {
             true,
 
           lineSPassNotification:
-            true,
+            LINE_PASS_NOTIFICATIONS_ENABLED,
 
           lineEarlyNotification:
-            true,
+            LINE_EARLY_NOTIFICATIONS_ENABLED,
 
-          lineEarlyWindow:
-            `${LINE_FINAL_MAX_MINUTES}-${AUTO_MAX_MINUTES}min`,
+          lineFinalOnly:
+            !LINE_EARLY_NOTIFICATIONS_ENABLED,
+
+          lineSendMode:
+            "S_BET_FINAL_ONLY",
+
+          lineFinalWindow:
+            `0-${LINE_FINAL_MAX_MINUTES}min`,
 
           d1PerformanceStats:
             true,
@@ -13296,7 +13765,7 @@ export default {
             true,
 
           dailySummaryLineNotification:
-            true,
+            LINE_DAILY_SUMMARY_ENABLED,
 
           dailySummaryAfterAllRaces:
             true,
@@ -13344,6 +13813,15 @@ export default {
             true,
 
           holeTierRestored:
+            true,
+
+          main6PlusCover4:
+            true,
+
+          main10PerformanceStats:
+            true,
+
+          lineMonthlyLimitSaver:
             true
         });
       }
