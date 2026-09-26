@@ -7,10 +7,11 @@
 <title>競艇AI V6.6.11</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#f8fafc}.wrap{max-width:850px;margin:auto;padding:18px 14px 50px}h1{margin:0 0 6px;font-size:28px}.sub,.notice{color:#94a3b8;font-size:12px;line-height:1.6}.sub{margin-bottom:16px}.card{background:#1e293b;border-radius:16px;padding:14px;margin-bottom:14px}.title{font-size:19px;font-weight:900;margin-bottom:10px}label{display:block;color:#cbd5e1;font-size:13px;margin:5px 0}input,select,button{width:100%;min-height:46px;border:0;border-radius:10px;font-size:16px}input,select{background:#fff;color:#111827;padding:10px;margin-bottom:10px}button{background:#2563eb;color:#fff;font-weight:800;padding:10px;margin-bottom:8px}button:disabled{opacity:.55}.secondary{background:#334155}.learn-save{background:#0891b2}.s-button{background:#dc2626}.s-save{background:#7c3aed}.status{color:#cbd5e1;font-size:14px;margin:6px 0 10px;min-height:20px;line-height:1.6}.speed{background:#052e16;border:1px solid #16a34a;border-radius:10px;padding:9px;font-size:12px;line-height:1.6;margin-bottom:10px}.race-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.race-btn{background:#334155;margin:0}.race-btn.active{background:#2563eb}.s-filter-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}.s-filter{min-height:38px;font-size:12px;margin:0;background:#334155}.s-filter.active{background:#2563eb}.s-filter.battle.active{background:#16a34a}.s-filter.pass.active{background:#d97706}.s-race,.racer,.prediction,.compare-box,.history-controls,.history-item,.learn-row{background:#0f172a;border-radius:12px}.s-race{padding:12px;margin-bottom:10px}.s-race.battle{border:2px solid #16a34a}.s-race.pass{border:2px solid #d97706}.s-head,.history-summary-top,.bet-top,.learn-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.s-title{font-size:20px;font-weight:900}.s-mark,.history-badge,.hole-badge{padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900}.s-mark.battle,.history-badge.battle{background:#16a34a}.s-mark.pass,.history-badge.pass{background:#d97706}.s-detail{color:#cbd5e1;font-size:12px;line-height:1.7;margin:8px 0}.racer{padding:12px;margin-bottom:8px}.topline{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center}.lane{width:40px;height:40px;border-radius:50%;background:#e2e8f0;color:#111827;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px}.name,.score{font-weight:900}.meta{color:#94a3b8;font-size:12px;margin-top:3px}.role-grid,.quality-grid,.bet-grid,.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:9px}.role-grid{grid-template-columns:repeat(3,1fr)}.role,.quality,.bet-item,.stat{background:#1e293b;padding:7px;border-radius:8px;font-size:11px;text-align:center}.role strong,.quality strong,.bet-item strong{display:block;font-size:14px}.prediction{padding:13px}.confidence{display:inline-block;padding:5px 13px;border-radius:999px;background:#334155;font-size:20px;font-weight:900}.confidence.s{background:#dc2626}.decision{border-radius:12px;padding:12px;margin:10px 0}.decision.battle{background:#052e16;border:1px solid #16a34a}.decision.pass{background:#451a03;border:1px solid #d97706}.decision-title{font-size:21px;font-weight:900}.decision-score{font-size:13px;margin-top:4px}.adjust{background:#172554;border-radius:10px;padding:10px;margin:10px 0;font-size:13px;line-height:1.7}.strategy{background:#082f49;border:1px solid #0284c7;border-radius:10px;padding:10px;margin:10px 0;font-size:12px;line-height:1.7}.bet-card{background:#1e293b;border-radius:12px;padding:12px;margin-top:9px}.bet-card.top6{border:2px solid #2563eb}.bet-card.top10:not(.top6){border:1px solid #7c3aed}.combo,.hole-combo{font-size:21px;font-weight:900}.total-score{font-size:18px;font-weight:900}.hole-section{margin-top:18px;border-top:2px solid #a855f7;padding-top:14px}.hole-title{font-size:20px;font-weight:900;margin-bottom:5px}.hole-info{background:#3b0764;border:1px solid #a855f7;border-radius:10px;padding:10px;line-height:1.6;font-size:12px;margin-bottom:10px}.hole-card{background:#2e1065;border:1px solid #7e22ce;border-radius:12px;padding:12px;margin-top:9px}.hole-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.hole-badge.middle{background:#0369a1}.hole-badge.hole{background:#7e22ce}.hole-badge.big{background:#be123c}.hole-reason{font-size:11px;color:#ddd6fe;line-height:1.6;margin-top:8px}.compare{display:grid;gap:8px}.compare-box{padding:11px;line-height:1.7;font-size:12px}.compare-box strong{font-size:18px}.hole-compare{border:1px solid #a855f7}.learn-row{padding:10px;margin-bottom:7px}.history-controls{padding:10px;margin-bottom:10px}.history-filter-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px}.history-period-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.filter-btn{min-height:38px;margin:0;font-size:12px;background:#334155}.filter-btn.active{background:#2563eb}.filter-btn.battle-active{background:#16a34a}.filter-btn.pass-active{background:#d97706}.filter-btn.hole-active{background:#7e22ce}.history-count{font-size:12px;color:#94a3b8;padding-top:8px}.history-item{margin-bottom:9px;overflow:hidden}.history-item.battle{border:1px solid #16a34a}.history-item.pass{border:1px solid #d97706}.history-summary{padding:12px;cursor:pointer}.history-race{font-weight:900}.history-badge{background:#334155}.history-badge.learning{background:#0891b2}.history-compact{font-size:12px;color:#cbd5e1;line-height:1.7;margin-top:6px}.history-arrow{font-size:11px;color:#94a3b8;margin-top:5px}.history-detail{display:none;padding:0 12px 12px}.history-detail.open{display:block}.history-meta,.result,.diagnostic,.hole-result,.actual-rank{background:#1e293b;border-radius:9px;padding:9px;color:#cbd5e1;font-size:12px;line-height:1.7}.result{margin-top:10px;font-size:13px}.actual-rank{margin-top:10px;background:#172554}.actual-rank strong{font-size:20px}.hole-result{background:#3b0764;margin-top:9px}.diagnostic{background:#0f172a;margin-top:8px}.version{text-align:center;color:#64748b;font-size:12px;margin-top:24px}.diagnosis-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.diagnosis-box{background:#0f172a;border-radius:10px;padding:10px;text-align:center;font-size:11px}.diagnosis-box strong{display:block;font-size:18px;margin-top:4px}
+.race-diagnostic{background:#0f172a;border:1px solid #38bdf8;border-radius:12px;padding:12px;margin:12px 0}.race-diagnostic>strong{display:block;font-size:17px;margin-bottom:5px}.race-diagnostic-row{display:grid;grid-template-columns:34px repeat(3,minmax(0,1fr));gap:4px;align-items:center;text-align:center;border-bottom:1px solid #334155;padding:8px 0;font-size:12px}.race-diagnostic-row.header{color:#94a3b8}.race-diagnostic-row small{color:#94a3b8}.diag-lane{border-radius:5px;padding:5px 0;color:#fff}.lane-1{background:#e2e8f0;color:#111827}.lane-2{background:#374151}.lane-3{background:#dc2626}.lane-4{background:#2563eb}.lane-5{background:#eab308;color:#111827}.lane-6{background:#16a34a}@media(max-width:480px){.race-diagnostic-row{font-size:11px;gap:2px}.race-diagnostic-row small{display:block}}
 </style>
 </head>
 <body><div class="wrap">
-<h1>競艇AI V6.6.14</h1><div class="sub">全レース学習保存 / 1着固定なしの総合順位 / 条件付き着順別学習 / 穴狙い維持 / 高速処理</div>
+<h1>競艇AI V6.6.15</h1><div class="sub">全レース学習保存 / 1着固定なしの総合順位 / 条件付き着順別学習 / 穴狙い維持 / 高速処理</div>
 <div class="card"><label>日付</label><input id="date" type="date"><button id="loadVenues">開催場を取得</button><div id="venueStatus" class="status"></div><label>開催場</label><select id="venue"><option value="">開催場を選択</option></select><button id="loadRaces">レース一覧を取得</button><div id="raceStatus" class="status"></div></div>
 <div class="card"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><label>S勝負 保存時1点金額</label><input id="sBetUnit" type="number" value="100" min="100" step="100"><button id="saveAllS" class="s-save">🔥 S勝負だけまとめて保存</button><div id="sSaveStatus" class="status"></div><div class="notice">穴狙いも同じ1点金額で保存・検証します。</div></div>
 <div class="card"><div class="title">📚 全レース学習保存</div><div class="speed">選択した開催場の未終了レースをまとめて予想時点で保存します。S/A/Bすべて学習に使用し、実績の的中率・回収率には混ぜません。</div><button id="saveAllLearning" class="learn-save">📚 未終了レースを学習用に一括保存</button><div id="learningSaveStatus" class="status"></div><div class="notice">今日のレース専用です。終了済みレースは除外。オッズや展示がまだ取得できないレースは、後でもう一度押すと追加できます。</div></div>
@@ -26,7 +27,7 @@
 <div class="card"><div class="title">着順別診断</div><div id="missDiagnosis"></div></div>
 <div class="card"><div class="title">1着・2着・3着 別学習</div><div id="weightStatus" class="status"></div><div id="weights"></div></div>
 <div class="card"><div class="title">保存履歴</div><button id="checkAllResults">結果を一括チェック</button><div id="autoCheckStatus" class="status"></div><div class="history-controls"><div class="history-filter-grid"><button class="filter-btn active" data-history-filter="all">すべて</button><button class="filter-btn" data-history-filter="battle">🔥 S勝負</button><button class="filter-btn" data-history-filter="pass">⚠️ S見送り</button><button class="filter-btn" data-history-filter="s">Sすべて</button><button class="filter-btn" data-history-filter="hit">🎯 本線的中</button><button class="filter-btn" data-history-filter="holehit">💥 穴的中</button><button class="filter-btn" data-history-filter="miss">× 本線不的中</button><button class="filter-btn" data-history-filter="learning">📚 学習用</button></div><div class="history-period-grid"><button class="filter-btn active" data-history-period="all">全期間</button><button class="filter-btn" data-history-period="today">今日</button><button class="filter-btn" data-history-period="yesterday">昨日</button></div><div id="historyCount" class="history-count"></div></div><div id="history"></div><button id="loadMoreHistory" class="secondary" style="display:none">さらに5件見る</button><button id="clearHistory" class="secondary">保存履歴を全削除</button></div>
-<div class="version">Boat Racing AI V6.6.14</div></div>
+<div class="version">Boat Racing AI V6.6.15</div></div>
 <script>
 const $=id=>document.getElementById(id);
 const dateInput=$("date"),venueSelect=$("venue"),raceGrid=$("raceGrid"),racersBox=$("racers"),predictionBox=$("prediction"),historyBox=$("history"),sRaceList=$("sRaceList");
@@ -841,7 +842,30 @@ function decisionHtml(d){if(!d||d.status==="NONE")return "";const m=d.metrics;re
 
 function holeBetsHtml(h){if(!h?.length)return `<div class="hole-section"><div class="hole-title">🎯 穴狙い</div><div class="hole-info">今回はAI条件を満たす穴候補がありません。</div></div>`;return `<div class="hole-section"><div class="hole-title">🎯 穴狙い ${h.length}点</div><div class="hole-info">本線とは別枠。高オッズだけでなく、推定確率・EV・AI評価が残る買い目だけを抽出。</div>${h.map(b=>`<div class="hole-card"><div class="hole-head"><div><div class="notice">AI全120通り ${b.aiRank}位</div><div class="hole-combo">${b.combination}</div></div><div class="hole-badge ${b.tier.key}">${b.tier.label}</div></div><div class="bet-grid"><div class="bet-item">穴評価<strong>${b.holeScore.toFixed(1)}</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div></div></div>`).join("")}</div>`}
 
-function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><strong>${r.overallScore.toFixed(1)}</strong></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}</div>`}
+function preRaceDiagnosticsHtml(racers){
+  const number=v=>{const n=safeNumber(v);return n!==null&&n>0?n:null};
+  const startValue=v=>{const n=number(v);return n!==null&&n<=.40?n:null};
+  const rows=racers.map(r=>{
+    const avg=startValue(r.avgST),display=startValue(r.before?.exhibitionST);
+    const motor=number(r.motor?.secondRate),ex=number(r.before?.exhibitionTime);
+    return {lane:Number(r.lane),avg,display,motor,ex,start:avg!==null&&display!==null?avg*.7+display*.3:avg};
+  }).sort((a,b)=>a.lane-b.lane);
+  const startRows=rows.filter(r=>r.start!==null).sort((a,b)=>a.start-b.start);
+  const motorRows=rows.filter(r=>r.motor!==null).sort((a,b)=>b.motor-a.motor);
+  const exRows=rows.filter(r=>r.ex!==null).sort((a,b)=>a.ex-b.ex);
+  const rank=(list,lane)=>{const i=list.findIndex(r=>r.lane===lane);return i<0?null:i+1};
+  const note=rows.map(r=>({...r,startRank:rank(startRows,r.lane),motorRank:rank(motorRows,r.lane),exRank:rank(exRows,r.lane)}));
+  const haveDisplay=rows.some(r=>r.display!==null);
+  const h=(s)=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const rowHtml=note.map(r=>`<div class="race-diagnostic-row"><b class="diag-lane lane-${r.lane}">${r.lane}</b><span>${r.startRank?`${r.startRank}位 <small>${r.start.toFixed(3)}</small>`:'未取得'}</span><span>${r.motorRank?`${r.motorRank}位 <small>${r.motor.toFixed(1)}%</small>`:'未取得'}</span><span>${r.exRank?`${r.exRank}位 <small>${r.ex.toFixed(2)}</small>`:'未取得'}</span></div>`).join('');
+  let focus='6艇の平均ST・モーター・展示を照らし合わせて確認してください。';
+  const lane1=note.find(r=>r.lane===1);
+  if(lane1?.startRank>=4&&startRows.length>=4)focus='1号艇のスタート指標が出走艇内で下位です。ほかの1着候補も確認してください。';
+  else if(lane1?.startRank===1&&lane1?.motorRank<=2)focus='1号艇のスタート指標とモーター2連対率が出走艇内で上位です。';
+  return `<div class="race-diagnostic"><strong>直前診断｜スタート・モーター・展示</strong><div class="notice">同じレースの6艇内で比較した参考順位。実際のスタートや着順を保証するものではありません。</div><div class="race-diagnostic-row header"><b>艇</b><span>ST参考順</span><span>モーター</span><span>展示タイム</span></div>${rowHtml}<div class="notice" style="margin-top:8px">${h(focus)} ${haveDisplay?'ST参考値は平均STを70%、展示STを30%で合成。':'展示ST未取得のため、ST参考順は平均STで表示。'} 展示タイムが未取得の艇は順位を付けません。</div></div>`;
+}
+
+function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}${preRaceDiagnosticsHtml(p.modelRacers)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><strong>${r.overallScore.toFixed(1)}</strong></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}</div>`}
 
 function renderRacers(racers){racersBox.innerHTML="";const ranking=racers.slice().sort((a,b)=>b.overallScore-a.overallScore);for(const racer of ranking){const rank=ranking.findIndex(r=>r.lane===racer.lane)+1,row=document.createElement("div");row.className="racer";row.innerHTML=`<div class="topline"><div class="lane">${racer.lane}</div><div><div class="name">AI${rank}位 ${racer.name}</div><div class="meta">${racer.class} / ${racer.registration}</div></div><div class="score">${racer.overallScore.toFixed(1)}</div></div><div class="role-grid"><div class="role">1着適性<strong>${racer.firstScore.toFixed(1)}</strong></div><div class="role">2着適性<strong>${racer.secondScore.toFixed(1)}</strong></div><div class="role">3着適性<strong>${racer.thirdScore.toFixed(1)}</strong></div></div><div class="stats"><div class="stat">全国勝率：${fmt(racer.national?.winRate)}</div><div class="stat">当地勝率：${fmt(racer.local?.winRate)}</div><div class="stat">平均ST：${fmt(racer.avgST)}</div><div class="stat">モーター：${fmt(racer.motor?.secondRate)}%</div><div class="stat">展示：${fmt(racer.before?.exhibitionTime)}</div><div class="stat">展示ST：${fmt(racer.before?.exhibitionST)}</div></div>`;racersBox.appendChild(row)}}
 
@@ -2574,16 +2598,16 @@ setTimeout(
 
 </script>
 <script>
-/* ===== V6.6.14 過去レース学習取り込み ===== */
+/* ===== V6.6.15 過去レース学習取り込み ===== */
 
-const V6612_VERSION="6.6.14";
+const V6612_VERSION="6.6.15";
 
-/* 画面表示だけV6.6.14へ更新 */
-document.title="競艇AI V6.6.14";
+/* 画面表示だけV6.6.15へ更新 */
+document.title="競艇AI V6.6.15";
 
 const v6612H1=document.querySelector("h1");
 if(v6612H1){
-  v6612H1.textContent="競艇AI V6.6.14";
+  v6612H1.textContent="競艇AI V6.6.15";
 }
 
 const v6612Sub=document.querySelector(".sub");
@@ -2595,10 +2619,10 @@ if(v6612Sub){
 const v6612Version=document.querySelector(".version");
 if(v6612Version){
   v6612Version.textContent=
-    "Boat Racing AI V6.6.14";
+    "Boat Racing AI V6.6.15";
 }
 
-/* 今後作る通常予想はV6.6.14として保存 */
+/* 今後作る通常予想はV6.6.15として保存 */
 const buildPredictionV6611=
   buildPrediction;
 
@@ -3322,7 +3346,7 @@ if(
     importPastLearningRaces;
 }
 
-/* 比較表示をV6.6.14へ更新 */
+/* 比較表示をV6.6.15へ更新 */
 
 const renderComparisonsV6611=
   renderComparisons;
@@ -3347,7 +3371,7 @@ renderComparisons=function(){
     ){
 
       parentTitle.textContent=
-        "V6.6.11 → V6.6.14 比較";
+        "V6.6.11 → V6.6.15 比較";
     }
 
     box.innerHTML=
@@ -3364,33 +3388,33 @@ renderComparisons=function(){
       +
 
       comparisonHtml(
-        "新 V6.6.14 上位6点",
+        "新 V6.6.15 上位6点",
         comparisonData(
           "p6",
           "all",
-          "6.6.14"
+          "6.6.15"
         )
       )
 
       +
 
       comparisonHtml(
-        "新 V6.6.14 上位10点",
+        "新 V6.6.15 上位10点",
         comparisonData(
           "p10",
           "all",
-          "6.6.14"
+          "6.6.15"
         )
       )
 
       +
 
       comparisonHtml(
-        "新 V6.6.14 上位15点",
+        "新 V6.6.15 上位15点",
         comparisonData(
           "p15",
           "all",
-          "6.6.14"
+          "6.6.15"
         )
       );
   }
@@ -3934,7 +3958,7 @@ renderHistory();
 </style>
 
 <script>
-/* ===== V6.6.14 D1クラウド同期 ===== */
+/* ===== V6.6.15 D1クラウド同期 ===== */
 
 (function(){
 
@@ -4828,7 +4852,7 @@ renderHistory();
       margin-bottom:12px;
       line-height:1.6;
     ">
-      尼崎12RをWorker側のV6.6.14で分析し、
+      尼崎12RをWorker側のV6.6.15で分析し、
       note文章まで生成します。
       D1への保存はしません。
     </div>
@@ -4906,7 +4930,7 @@ renderHistory();
       }
 
       result.textContent =
-        "🤖 V6.6.14で分析中…";
+        "🤖 V6.6.15で分析中…";
 
       body.style.display =
         "none";
