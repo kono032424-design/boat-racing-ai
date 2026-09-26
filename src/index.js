@@ -1,7 +1,7 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.6";
-const AI_VERSION = "6.7.2";
+const WORKER_VERSION = "6.6.7";
+const AI_VERSION = "6.7.3";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
@@ -6869,362 +6869,39 @@ function makeSDecision(
    本線選択
 ========================= */
 
-function selectMainlineBets(
-  allBets,
-  racers,
-  confidence
-) {
-  const firstRank =
-    racers
-      .slice()
-      .sort(
-        (a,b) =>
-          b.firstScore -
-          a.firstScore
-      );
+function selectMainlineBets(allBets, racers, confidence) {
+  // evaluateBets has already scored and ranked every available 3連単 combination.
+  // Never filter by first or second place when selecting the main six or cover four.
+  const firstRank = racers.slice().sort((a, b) => b.firstScore - a.firstScore);
+  const top1 = firstRank[0];
+  const top2 = firstRank[1];
+  const share = firstWinShare(top1.lane, racers);
+  const top2Share = firstWinShare(top2.lane, racers);
+  const gap = top1.firstScore - top2.firstScore;
+  const firstSix = new Set(allBets.slice(0, 6).map(bet => bet.first));
 
-  const top1 =
-    firstRank[0];
-
-  const top2 =
-    firstRank[1];
-
-  const share =
-    firstWinShare(
-      top1.lane,
-      racers
-    );
-
-  const top2Share =
-    firstWinShare(
-      top2.lane,
-      racers
-    );
-
-  const pairShare =
-    share +
-    top2Share;
-
-  const gap =
-    top1.firstScore -
-    top2.firstScore;
-
-  const secondStable =
-    roleStability(
-      racers,
-      "secondScore"
-    );
-
-  const thirdStable =
-    roleStability(
-      racers,
-      "thirdScore"
-    );
-
-  /*
-    V6.6.2:
-    1着固定をデフォルトにしない。
-    FIXED / DUAL_HEAD / SWAP / BALANCED の4方式を
-    1着シェア・上位2艇の集中度・1着差・S/A/B判定から自動選択する。
-
-    FIXED は「かなり明確な1着優位」がある場合だけ許可し、
-    それ以外は2頭軸・入替・バランスへ逃がして
-    1号艇を含む単独頭固定への過信を抑える。
-  */
-  let type =
-    "BALANCED";
-
-  let label =
-    "バランス型";
-
-  let reason =
-    "1着候補を固定せず全組み合わせのAI評価を優先";
-
-  let axisLanes = [];
-
-  if (
-    confidence === "S"
-    &&
-    share >= .40
-    &&
-    gap >= 12
-  ) {
-    type =
-      "FIXED";
-
-    label =
-      "1着固定型";
-
-    reason =
-      `${top1.lane}号艇の1着優位が十分に大きいため固定`;
-
-    axisLanes = [
-      top1.lane
-    ];
-
-  } else if (
-    pairShare >= .58
-    &&
-    top2Share >= .18
-    &&
-    gap >= 3.5
-    &&
-    gap < 12
-  ) {
-    type =
-      "DUAL_HEAD";
-
-    label =
-      `2頭軸型（${top1.lane}・${top2.lane}）`;
-
-    reason =
-      `${top1.lane}号艇と${top2.lane}号艇の1着評価が上位2艇に集中`;
-
-    axisLanes = [
-      top1.lane,
-      top2.lane
-    ];
-
-  } else if (
-    share < .32
-    ||
-    gap < 6
-  ) {
-    type =
-      "SWAP";
-
-    label =
-      "1・2着入替型";
-
-    reason =
-      `${top1.lane}号艇と${top2.lane}号艇の1着差が小さいため頭を固定しない`;
-
-    axisLanes = [
-      top1.lane,
-      top2.lane
-    ];
+  let type = "MIXED";
+  let label = "混戦";
+  if (share >= .40 && gap >= 12 && firstSix.size <= 2) {
+    type = "FAVORITE";
+    label = "本命";
+  } else if (share < .32 || firstSix.size >= 3) {
+    type = "UPSET";
+    label = "波乱";
   }
-
-  let preferred = [];
-
-  if (
-    type === "FIXED"
-  ) {
-    preferred =
-      allBets.filter(
-        bet =>
-          bet.first ===
-          top1.lane
-      );
-
-  } else if (
-    type === "DUAL_HEAD"
-  ) {
-    /*
-      2頭軸型は上位2艇を1・2着に置き、順番は両方残す。
-      例: 1-4-X / 4-1-X。
-    */
-    preferred =
-      allBets.filter(
-        bet =>
-          (
-            bet.first === top1.lane
-            &&
-            bet.second === top2.lane
-          )
-          ||
-          (
-            bet.first === top2.lane
-            &&
-            bet.second === top1.lane
-          )
-      );
-
-  } else if (
-    type === "SWAP"
-  ) {
-    /*
-      入替型は上位2艇のどちらかを1着候補に残すが、
-      2着は他艇も含めてAI評価順に選ぶ。
-    */
-    preferred =
-      allBets.filter(
-        bet =>
-          bet.first ===
-          top1.lane
-          ||
-          bet.first ===
-          top2.lane
-      );
-
-  } else {
-    preferred =
-      allBets.slice();
-  }
-
-  const selected = [];
-  const seen =
-    new Set();
-
-  for (
-    const item of
-    preferred
-  ) {
-    if (
-      selected.length >= 15
-    ) {
-      break;
-    }
-
-    if (
-      !seen.has(
-        item.combination
-      )
-    ) {
-      selected.push(
-        item
-      );
-
-      seen.add(
-        item.combination
-      );
-    }
-  }
-
-  /*
-    preferredだけで15点に届かない場合は全体AI順位から補完。
-    本線6点は可能な限り選択した戦略内から残る。
-  */
-  for (
-    const item of
-    allBets
-  ) {
-    if (
-      selected.length >= 15
-    ) {
-      break;
-    }
-
-    if (
-      !seen.has(
-        item.combination
-      )
-    ) {
-      selected.push(
-        item
-      );
-
-      seen.add(
-        item.combination
-      );
-    }
-  }
-
-  const top6 =
-    selected.slice(
-      0,
-      6
-    );
-
-  const thirds =
-    new Set(
-      top6.map(
-        item =>
-          item.third
-      )
-    );
-
-  if (
-    thirds.size < 3
-  ) {
-    const cutoff =
-      top6.length
-        ? top6[
-            top6.length - 1
-          ].totalScore
-        : 0;
-
-    for (
-      const item of
-      selected.slice(6)
-    ) {
-      if (
-        thirds.size >= 3
-      ) {
-        break;
-      }
-
-      if (
-        thirds.has(
-          item.third
-        )
-        ||
-        item.totalScore <
-        cutoff * .88
-      ) {
-        continue;
-      }
-
-      top6[
-        top6.length - 1
-      ] = item;
-
-      thirds.add(
-        item.third
-      );
-    }
-  }
-
-  const top6Set =
-    new Set(
-      top6.map(
-        item =>
-          item.combination
-      )
-    );
-
-  const reordered = [
-    ...top6,
-
-    ...selected.filter(
-      item =>
-        !top6Set.has(
-          item.combination
-        )
-    )
-  ].slice(
-    0,
-    15
-  );
 
   return {
     type,
     label,
-
-    reason:
-      reason +
-      " / 3着候補は残り艇をAI評価で再選択",
-
-    firstShare:
-      share,
-
+    reason: "取得できた3連単を1・2・3着の評価、確率、オッズから採点し、総合順位で選出",
+    firstShare: share,
     top2Share,
-
-    pairShare,
-
-    firstGap:
-      gap,
-
-    axisLanes,
-
-    secondStability:
-      secondStable,
-
-    thirdStability:
-      thirdStable,
-
-    bets:
-      reordered
+    pairShare: share + top2Share,
+    firstGap: gap,
+    axisLanes: [top1.lane, top2.lane],
+    secondStability: roleStability(racers, "secondScore"),
+    thirdStability: roleStability(racers, "thirdScore"),
+    bets: allBets.slice(0, 15)
   };
 }
 
@@ -8147,8 +7824,8 @@ ${status}
 
 ${sDetail}
 
-戦略：
-${snapshot.strategy?.label || "-"}
+展開判定：${snapshot.strategy?.label || "-"}
+本線6点：AI総合順位
 ${snapshot.strategy?.reason || ""}
 
 1着評価トップ：
@@ -11142,7 +10819,8 @@ Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed
 1着推定力：${share}
 上位6点確率：${top6}
 10点内確率：${top10}
-戦略：${pick.strategy || "-"}
+展開判定：${pick.strategy || "-"}
+本線6点：AI総合順位
 
 【本線6点】
 ${main}
@@ -11245,7 +10923,8 @@ Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed
 1着推定力：${share}
 上位6点確率：${top6}
 10点内確率：${top10}
-戦略：${pick.strategy || "-"}
+展開判定：${pick.strategy || "-"}
+本線6点：AI総合順位
 
 【本線6点】
 ${main}
@@ -11299,7 +10978,8 @@ Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed
 1着推定力：${share}
 上位6点確率：${top6}
 10点内確率：${top10}
-戦略：${pick.strategy || "-"}
+展開判定：${pick.strategy || "-"}
+本線6点：AI総合順位
 
 締切35分以内になったら最終LINEを送ります。
 
