@@ -4888,6 +4888,7 @@ renderHistory();
   if (!wrap) return;
 
   const box = document.createElement("div");
+  box.className = "portal-test";
 
   box.style.cssText = `
     background:#1e293b;
@@ -5017,6 +5018,7 @@ renderHistory();
   if (!wrap) return;
 
   const box = document.createElement("div");
+  box.className = "portal-test";
 
   box.style.cssText = `
     background:#1e293b;
@@ -5214,6 +5216,7 @@ renderHistory();
   if (!wrap) return;
 
   const box = document.createElement("div");
+  box.className = "portal-test";
 
   box.style.cssText = `
     background:#1e293b;
@@ -5546,5 +5549,25 @@ renderHistory();
   }else{cloud.innerHTML='<strong>自動分析 S勝負の成績</strong><p class="notice">S評価一覧で認証すると今日・過去7日・全期間の収支を確認できます。</p><a href="/api/s-picks-view">S評価一覧を開く →</a>'}
 })();
 </script>
+<style>
+/* Readability fixes for late-mounted cards and later style blocks. */
+.note-box,.cloud-box{color:#f8fafc!important}
+.note-box .notice,.note-box .status,.cloud-box .notice,.cloud-box .status,.cloud-box label{color:#dbe4f2!important}
+.portal-test{color:#f8fafc!important}
+.portal-test .notice,.portal-test .status{color:#dbe4f2!important}
+.dash-stat,.dash-result{background:#f7f8fc;color:#202439;border:1px solid #dfe3ed}
+.dash-stat small,.dash-result .subline,.dash-rank small{color:#556078}
+.dash-result-top,.dash-stat strong{color:#202439}
+.dash-result.hit{border-color:#1d9e70;background:#f0faf6}
+.dash-empty{color:#556078}
+.history-meta,.history-detail .result,.history-detail .diagnostic,.history-detail .actual-rank{color:#273148}
+@media(max-width:600px){
+  html{scroll-padding-top:140px}
+  .portal-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:0 8px;overflow:visible}
+  .portal-nav a{text-align:center;white-space:normal;font-size:11px;line-height:1.25;min-height:38px;padding:8px 3px;border-bottom-width:2px}
+  .portal-brand{font-size:21px}
+  .portal-header-inner{padding:7px 14px}
+}
+</style>
 </body>
 </html>
