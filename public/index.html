@@ -95,6 +95,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,su
 </section>
 <section class="portal-section" id="results"><div class="portal-section-heading"><span>04 / PERFORMANCE</span><h2>AI予想実績・レース結果</h2><p>期間や買い目を選んで、的中率と収支を確認できます。</p></div>
 <div class="card" id="performanceDashboard"><div class="title">📊 AI予想実績</div><div id="portalCloudPerformance" class="portal-cloud"><strong>自動分析 S勝負の成績</strong><div class="portal-empty">成績を読み込みます</div></div><div class="notice">下の記録はこの端末で保存し、結果を確認した購入予想です。2026/9/27以降を集計し、購入額は保存時の1点金額で計算します。</div><div class="dash-controls"><label>期間<select id="dashPeriod"><option value="30">直近30日</option><option value="7">直近7日</option><option value="all">全期間</option></select></label><label>買い目<select id="dashStyle"><option value="p6">本線6点</option><option value="p10">本線10点</option><option value="p15">本線15点</option><option value="hole">穴候補</option><option value="hit">🎯 的中特化型AI（6点）</option><option value="balance">⚖️ バランス型AI（6点）</option><option value="high">💥 一撃重視型AI（最大4点）</option></select></label></div><div id="dashSummary"></div><div class="title" style="margin-top:20px">レース別結果</div><div id="dashResults"></div><div class="title" style="margin-top:20px">保存済みレースの選手ランキング</div><div class="notice">結果を確認できた保存済みレースだけの集計です。公式の全国ランキングではありません。</div><div id="dashRacers"></div></div>
+<div class="card" id="allRaceResults"><div class="title">🚤 競艇・全レースの結果と払戻</div><div class="notice">BOAT RACE公式の競艇結果を、予想を保存していないレースも含めて表示します。日付と競艇場を選び、各レースの3連単（艇番）と払戻を確認できます。結果を見るだけでは予想履歴へ保存されません。</div><div class="all-result-controls"><label for="allResultDate">日付<input id="allResultDate" type="date"></label><label for="allResultVenue">開催場<select id="allResultVenue"><option value="">全開催場</option></select></label></div><div class="all-result-actions"><button type="button" id="loadResultVenues" class="secondary">競艇場を取得</button><button type="button" id="loadAllResults">競艇の結果を表示</button><button type="button" id="cancelAllResults" class="secondary" hidden>取得を中止</button></div><div id="allResultStatus" class="status" aria-live="polite">日付を選んで結果を表示してください。</div><div id="allResultList"></div></div>
 <div class="card" id="race-results"><div class="title">保存したレースの結果・払戻</div><button id="checkAllResults">結果を一括チェック</button><div id="autoCheckStatus" class="status"></div><div class="history-controls"><div class="history-filter-grid"><button class="filter-btn active" data-history-filter="all">すべて</button><button class="filter-btn" data-history-filter="battle">🔥 S勝負</button><button class="filter-btn" data-history-filter="pass">⚠️ S見送り</button><button class="filter-btn" data-history-filter="s">Sすべて</button><button class="filter-btn" data-history-filter="hit">🎯 本線的中</button><button class="filter-btn" data-history-filter="holehit">💥 穴的中</button><button class="filter-btn" data-history-filter="miss">× 本線不的中</button><button class="filter-btn" data-history-filter="learning">📚 学習用</button></div><div class="history-period-grid"><button class="filter-btn active" data-history-period="all">全期間</button><button class="filter-btn" data-history-period="today">今日</button><button class="filter-btn" data-history-period="yesterday">昨日</button></div><div id="historyCount" class="history-count"></div></div><div id="history"></div><button id="loadMoreHistory" class="secondary" style="display:none">さらに5件見る</button><button id="clearHistory" class="secondary">保存履歴を全削除</button></div>
 </section>
 <section class="portal-section" id="database"><div class="portal-section-heading"><span>05 / DATABASE</span><h2>選手の過去実績</h2><p>取り込んだ確定結果から過去30日の選手成績を集計します。公式の全国ランキングではありません。</p></div><div class="card portal-db"><label for="portalRacerSearch">選手名で探す</label><input id="portalRacerSearch" type="search" placeholder="選手名を入力"><div id="portalRacerStatus" class="status">過去の学習データを読み込みます</div><div id="portalRacerRanking"></div></div></section>
@@ -5353,6 +5354,7 @@ renderHistory();
 .purpose-mode{margin:12px 0;background:#fff;color:#202439;border:1px solid #dfe3ed;border-radius:13px;overflow:hidden}.purpose-mode.hit{border-left:4px solid #2585db}.purpose-mode.balance{border-left:4px solid #17a354}.purpose-mode.high{border-left:4px solid #d63865}
 .purpose-mode summary{display:flex;align-items:center;gap:9px;cursor:pointer;list-style:none;padding:14px 12px;font-size:16px;font-weight:850}.purpose-mode summary::-webkit-details-marker{display:none}.purpose-mode summary .purpose-icon{font-size:22px}.purpose-mode summary .purpose-arrow{margin-left:auto;color:#526078}.purpose-mode[open] summary .purpose-arrow{transform:rotate(180deg)}.purpose-body{padding:0 12px 14px}.purpose-metrics{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 10px}.purpose-metrics span{background:#f1f3f6;padding:7px;border-radius:6px;font-size:12px;color:#526078}.purpose-metrics b{color:#202439;font-size:15px}.purpose-stake{font-size:13px;color:#526078;line-height:1.6}.purpose-mark{background:#f1f3f6;border-radius:8px;padding:11px;margin:12px 0}.purpose-mark-label{font-size:12px;color:#526078;margin-bottom:7px}.purpose-mark-list{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:14px;font-weight:700}.purpose-mark-list span{white-space:nowrap}
 .purpose-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}.purpose-table{width:100%;min-width:505px;border-collapse:collapse;white-space:nowrap;font-size:13px}.purpose-table th{color:#526078;text-align:right;font-size:12px;font-weight:750;border-top:1px solid #e0e4ed;border-bottom:1px solid #e0e4ed;padding:10px 5px}.purpose-table th:first-child,.purpose-table td:first-child{text-align:left}.purpose-table td{text-align:right;border-bottom:1px solid #e0e4ed;padding:10px 5px;font-weight:650}.purpose-table tr.is-hit{background:#ffe8ec}.purpose-table tr.is-hit td{color:#ac2539}.purpose-hit{color:#d63865;font-weight:900;margin-right:3px}.purpose-lanes{display:inline-flex;align-items:center;gap:3px}.purpose-lane{display:inline-flex;align-items:center;justify-content:center;width:23px;height:25px;border-radius:3px;font-weight:850}.purpose-lane-1{color:#111827;background:#eff0f2}.purpose-lane-2{color:#fff;background:#171717}.purpose-lane-3{color:#fff;background:#d52c32}.purpose-lane-4{color:#fff;background:#1768c7}.purpose-lane-5{color:#111827;background:#ffed3a}.purpose-lane-6{color:#fff;background:#079568}.purpose-table-note{margin-top:9px;color:#526078;font-size:11px;line-height:1.6}
+.purpose-budget{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.purpose-budget label{color:#202439;font-weight:750;font-size:13px}.purpose-budget input,.purpose-table input{width:100px;min-height:37px;margin:0;padding:5px 7px;border:1px solid #bdc6d5;border-radius:7px;background:#fff;color:#202439;font-size:15px;text-align:right}.purpose-budget button{width:auto;min-height:37px;margin:0;padding:6px 11px;background:#2563eb;color:#fff;font-size:13px}.purpose-budget input:disabled,.purpose-table input:disabled{opacity:.7;background:#f1f3f6}.purpose-table input{width:78px;min-height:34px;font-size:13px}.purpose-help{color:#526078;font-size:12px;line-height:1.6;margin:6px 0 10px}
 @media(max-width:600px){.purpose-box{padding:12px}.purpose-body{padding:0 9px 12px}.purpose-mode summary{font-size:15px}.purpose-table{font-size:12px}.purpose-mark-list{gap:8px;font-size:12px}}
 </style>
 <script>
@@ -5384,39 +5386,128 @@ renderHistory();
   ];
   const money=n=>Number(n||0).toLocaleString('ja-JP')+'円';
   const lanes=combination=>`<span class="purpose-lanes">${String(combination).split('-').map((s,i)=>`<span class="purpose-lane purpose-lane-${Number(s)}">${Number(s)}</span>${i<2?'<span>−</span>':''}`).join('')}</span>`;
-  function savedResult(p){
-    const item=getHistory().find(x=>x.id===p.snapshot.id&&x.result?.finished);
-    return item?.result||null;
+  const amount=n=>Number.isFinite(Number(n))&&Number(n)>=0?Math.min(1000000,Math.floor(Number(n)/100)*100):0;
+  let currentPurposePrediction=null;
+  const capStorageKey='usa_lab_purpose_race_cap';
+  function storedCap(){try{return amount(localStorage.getItem(capStorageKey)||1000)}catch{return 1000}}
+  function autoBudget(p,key){
+    if(p.sDecision?.status==='PASS'||!(p.purposePicks[key]||[]).length)return 0;
+    const rate={hit:.5,balance:.4,high:.2}[key]||0;
+    return amount(Math.round((p.snapshot.purposeAutoCap||0)*rate/100)*100);
   }
-  function purposeHtml(p){
-    const unit=Math.max(100,Math.floor(Number($('betUnit')?.value||100)/100)*100||100);
-    const result=savedResult(p);
-    const sections=modes.map(({key,icon,name,reason},idx)=>{
+  function weightedDistribution(picks,budget,mode){
+    if(!picks.length)return {};
+    const units=amount(budget)/100;
+    const initial=Math.min(picks.length,units);
+    const spare=units-initial;
+    const weights=picks.map(b=>mode==='hit'?b.probability:mode==='balance'?Math.sqrt(b.probability*Math.max(.1,b.ev)):Math.max(.1,b.ev)*Math.sqrt(b.odds));
+    const total=weights.reduce((s,w)=>s+w,0);
+    const fractions=weights.map(w=>spare*w/total);
+    const blocks=fractions.map(x=>Math.floor(x));
+    let rest=spare-blocks.reduce((s,v)=>s+v,0);
+    fractions.map((v,i)=>({i,remainder:v-blocks[i]})).sort((a,b)=>b.remainder-a.remainder||a.i-b.i).slice(0,rest).forEach(x=>blocks[x.i]++);
+    return Object.fromEntries(picks.map((b,i)=>[b.combination,(blocks[i]+(i<initial?1:0))*100]));
+  }
+  function ensureAllocations(p){
+    p.snapshot.purposeAllocations ||= {};
+    p.snapshot.purposeBudgets ||= {};
+    p.snapshot.purposeAutoCap ??= storedCap();
+    const saved=savedItem(p);
+    for(const {key} of modes){
       const picks=p.purposePicks[key]||[];
-      const chance=picks.reduce((sum,bet)=>sum+bet.probability,0);
-      const estimatedRoi=picks.length?Math.round(picks.reduce((sum,bet)=>sum+bet.probability*bet.odds,0)/picks.length*100):0;
+      if(!p.snapshot.purposeAllocations[key]){
+        if(saved){
+          const recorded=saved.saveMode==='s-pass-observation'?0:Number(saved.betUnit||100);
+          p.snapshot.purposeAllocations[key]=saved.purposeAllocations?.[key]
+            ?{...saved.purposeAllocations[key]}
+            :Object.fromEntries(picks.map(b=>[b.combination,recorded]));
+          p.snapshot.purposeBudgets[key]=saved.purposeBudgets?.[key]??picks.length*recorded;
+        }else{
+          const budget=autoBudget(p,key);
+          p.snapshot.purposeBudgets[key]=budget;
+          p.snapshot.purposeAllocations[key]=weightedDistribution(picks,budget,key);
+        }
+      }
+    }
+  }
+  function savedItem(p){return getHistory().find(x=>x.id===p.snapshot.id)||null}
+  function purposeHtml(p){
+    ensureAllocations(p);
+    const saved=savedItem(p),result=saved?.result?.finished?saved.result:null;
+    const sections=modes.map(({key,icon,name,reason},idx)=>{
+      const picks=p.purposePicks[key]||[],alloc=p.snapshot.purposeAllocations[key]||{};
+      const stake=picks.reduce((s,b)=>s+Number(alloc[b.combination]||0),0);
+      const chance=picks.reduce((s,b)=>s+(alloc[b.combination]>0?b.probability:0),0);
+      const estimatedRoi=stake?Math.round(picks.reduce((s,b)=>s+b.probability*b.odds*Number(alloc[b.combination]||0),0)/stake*100):0;
       const lead=picks[0]?.combination?.split('-')||[];
       const third=[...new Set(picks.map(b=>b.combination.split('-')[2]))];
       const omitted=[1,2,3,4,5,6].filter(n=>!picks.some(b=>b.combination.split('-').includes(String(n))));
       const mark=picks.length?`<div class="purpose-mark"><div class="purpose-mark-label">予想印（候補から集計）</div><div class="purpose-mark-list"><span>◎ ${lead[0]||'―'}号艇</span><span>○ ${lead[1]||'―'}号艇</span><span>△ ${third.join('・')||'―'}号艇</span><span>消 ${omitted.join('・')||'なし'}</span></div></div>`:'';
-      const winner=result?.combination;
-      const hit=winner&&picks.some(b=>b.combination===winner);
-      const hitBanner=hit?`<div class="purpose-mark" style="background:#ffe8ec;color:#ac2539"><strong>🎯 結果的中 ${lanes(winner)}</strong><div>払戻試算 <b data-purpose-result="${Number(result.payoutPer100||0)}">${money(Math.round(Number(result.payoutPer100||0)*unit/100))}</b>（1点<span data-purpose-unit-label>${money(unit)}</span>）</div></div>`:'';
-      const rows=picks.map(b=>`<tr class="${hit&&b.combination===winner?'is-hit':''}"><td>${hit&&b.combination===winner?'<span class="purpose-hit">🎯</span>':''}${lanes(b.combination)}</td><td>${b.odds.toFixed(1)}倍</td><td data-purpose-unit>${money(unit)}</td><td data-purpose-payout="${b.odds}">${money(Math.round(b.odds*unit))}</td><td>${(b.probability*100).toFixed(2)}%</td></tr>`).join('');
-      return `<details class="purpose-mode ${key}" ${idx===0?'open':''}><summary><span class="purpose-icon">${icon}</span><span>${name}</span><span class="purpose-arrow" aria-hidden="true">⌄</span></summary><div class="purpose-body"><div class="purpose-metrics"><span>予想上の的中確率 <b>${(chance*100).toFixed(1)}%</b></span><span>推定回収率 <b>${estimatedRoi}%</b></span></div><div class="purpose-stake">${reason}<br>購入額の試算 <b data-purpose-total="${picks.length}">${money(picks.length*unit)}</b>（${picks.length}通り・各<span data-purpose-unit-label>${money(unit)}</span>）</div>${hitBanner}${mark}${picks.length?`<div class="purpose-table-wrap" tabindex="0" aria-label="${name}の買い目。横にスクロールできます"><table class="purpose-table"><thead><tr><th>3連単</th><th>オッズ</th><th>購入額</th><th>想定払戻</th><th>推定確率</th></tr></thead><tbody>${rows}</tbody></table></div><div class="purpose-table-note">横にスクロールすると全項目が見られます。想定払戻は購入額×表示オッズです。</div>`:'<div class="purpose-stake">今回は条件に合う買い目がないため見送りです。</div>'}</div></details>`;
+      const winner=result?.combination,winningAmount=Number(alloc[winner]||0);
+      const hit=winner&&winningAmount>0;
+      const hitBanner=hit?`<div class="purpose-mark" style="background:#ffe8ec;color:#ac2539"><strong>🎯 結果的中 ${lanes(winner)}</strong><div>払戻試算 ${money(Math.round(Number(result.payoutPer100||0)*winningAmount/100))}（配分 ${money(winningAmount)}）</div></div>`:'';
+      const rows=picks.map(b=>{const stakeForBet=Number(alloc[b.combination]||0);return `<tr class="${hit&&b.combination===winner?'is-hit':''}"><td>${hit&&b.combination===winner?'<span class="purpose-hit">🎯</span>':''}${lanes(b.combination)}</td><td>${b.odds.toFixed(1)}倍</td><td><input type="number" min="0" max="1000000" step="100" inputmode="numeric" aria-label="${name} ${b.combination} 購入額（円）" data-purpose-amount data-mode="${key}" data-combination="${b.combination}" value="${stakeForBet}" ${saved?'disabled':''}></td><td>${money(Math.round(b.odds*stakeForBet))}</td><td>${(b.probability*100).toFixed(2)}%</td></tr>`}).join('');
+      return `<details class="purpose-mode ${key}" ${idx===0?'open':''}><summary><span class="purpose-icon">${icon}</span><span>${name}</span><span class="purpose-arrow" aria-hidden="true">⌄</span></summary><div class="purpose-body"><div class="purpose-metrics"><span>予想上の的中確率 <b>${(chance*100).toFixed(1)}%</b></span><span>配分別の推定回収率 <b>${estimatedRoi}%</b></span></div><div class="purpose-stake">${reason}</div>${picks.length?`<div class="purpose-budget"><label for="purpose-budget-${key}">この予想の予算</label><input id="purpose-budget-${key}" type="number" min="0" max="1000000" step="100" inputmode="numeric" data-purpose-budget data-mode="${key}" value="${p.snapshot.purposeBudgets[key]}" ${saved?'disabled':''}><button type="button" data-purpose-auto="${key}" ${saved?'disabled':''}>予算を自動設定</button></div><div class="purpose-stake">配分合計 <b>${money(stake)}</b>（${picks.filter(b=>alloc[b.combination]>0).length}通り）。各買い目の金額も変更できます。</div>`:''}${hitBanner}${mark}${picks.length?`<div class="purpose-table-wrap" tabindex="0" aria-label="${name}の買い目。横にスクロールできます"><table class="purpose-table"><thead><tr><th>3連単</th><th>オッズ</th><th>購入額</th><th>想定払戻</th><th>推定確率</th></tr></thead><tbody>${rows}</tbody></table></div><div class="purpose-table-note">横にスクロールすると全項目が見られます。想定払戻＝表示オッズ×その買い目の配分額。0円の買い目は収支から除外します。</div>`:'<div class="purpose-stake">今回は条件に合う買い目がないため見送りです。</div>'}</div></details>`;
     }).join('');
-    return `<div class="purpose-box"><strong>AI予想を目的別に見る</strong><div class="notice">各項目を開くと、買い目と金額の試算が見られます。購入額は下の「1点購入額」に連動します。</div>${sections}<div class="notice">3種類は共通モデルからの選別です。予想上の的中確率と推定回収率は予測値であり、過去の実績や購入を示しません。実際の的中は保存済みの結果を確認した場合だけ表示します。</div></div>`;
+    return `<div class="purpose-box"><strong>AI予想を目的別に見る</strong><div class="notice">自動予算はレースごとの上限額から計算します。3種類は別々の購入案で、合計して買う金額ではありません。S見送りの自動予算は0円です。</div><div class="purpose-budget"><label for="purpose-race-cap">自動予算の上限（1レース）</label><input id="purpose-race-cap" type="number" min="0" max="1000000" step="100" inputmode="numeric" data-purpose-cap value="${p.snapshot.purposeAutoCap}" ${saved?'disabled':''}><button type="button" data-purpose-auto-all ${saved?'disabled':''}>3種類の予算を自動設定</button></div><div class="notice">上限を変更すると3種類とも再計算します。予算・買い目の金額は100円単位で編集でき、手動入力では上限を超えることもできます。保存前に配分を決めてください。${saved?' この予想は保存済みのため配分を固定しています。':''}</div>${sections}<div class="notice">3種類は共通モデルからの選別です。予想上の的中確率と推定回収率は予測値です。各モードの収支は購入した場合の試算で、実際の投票記録ではありません。</div></div>`;
   }
-  $('betUnit')?.addEventListener('input',()=>{
-    const unit=Math.max(100,Math.floor(Number($('betUnit').value||100)/100)*100||100);
-    predictionBox.querySelectorAll('[data-purpose-unit]').forEach(el=>el.textContent=money(unit));
-    predictionBox.querySelectorAll('[data-purpose-unit-label]').forEach(el=>el.textContent=money(unit));
-    predictionBox.querySelectorAll('[data-purpose-payout]').forEach(el=>el.textContent=money(Math.round(Number(el.dataset.purposePayout)*unit)));
-    predictionBox.querySelectorAll('[data-purpose-result]').forEach(el=>el.textContent=money(Math.round(Number(el.dataset.purposeResult)*unit/100)));
-    predictionBox.querySelectorAll('[data-purpose-total]').forEach(el=>el.textContent=money(Number(el.dataset.purposeTotal)*unit));
+  function updatePurpose(p){
+    const old=predictionBox.querySelector('.purpose-box');
+    if(!old)return;
+    const open=[...old.querySelectorAll('details[open]')].map(el=>el.classList[1]);
+    old.outerHTML=purposeHtml(p);
+    predictionBox.querySelectorAll('.purpose-mode').forEach((el,i)=>{el.open=open.includes(modes[i].key)});
+  }
+  predictionBox.addEventListener('change',event=>{
+    const input=event.target.closest('[data-purpose-cap],[data-purpose-budget],[data-purpose-amount]');
+    const p=currentPurposePrediction;
+    if(!input||!p||savedItem(p))return;
+    if(input.hasAttribute('data-purpose-cap')){
+      p.snapshot.purposeAutoCap=amount(input.value);
+      try{localStorage.setItem(capStorageKey,String(p.snapshot.purposeAutoCap))}catch{}
+      for(const {key} of modes){
+        const budget=autoBudget(p,key);
+        p.snapshot.purposeBudgets[key]=budget;
+        p.snapshot.purposeAllocations[key]=weightedDistribution(p.purposePicks[key]||[],budget,key);
+      }
+      updatePurpose(p);
+      return;
+    }
+    const key=input.dataset.mode,picks=p.purposePicks[key]||[];
+    if(!modes.some(x=>x.key===key))return;
+    if(input.hasAttribute('data-purpose-budget')){
+      const budget=amount(input.value);
+      p.snapshot.purposeBudgets[key]=budget;
+      p.snapshot.purposeAllocations[key]=weightedDistribution(picks,budget,key);
+    }else{
+      if(!picks.some(b=>b.combination===input.dataset.combination))return;
+      p.snapshot.purposeAllocations[key][input.dataset.combination]=amount(input.value);
+      p.snapshot.purposeBudgets[key]=picks.reduce((sum,b)=>sum+Number(p.snapshot.purposeAllocations[key][b.combination]||0),0);
+    }
+    updatePurpose(p);
+  });
+  predictionBox.addEventListener('click',event=>{
+    const button=event.target.closest('[data-purpose-auto],[data-purpose-auto-all]'),p=currentPurposePrediction;
+    if(!button||!p||savedItem(p))return;
+    if(button.hasAttribute('data-purpose-auto-all')){
+      for(const {key} of modes){
+        const budget=autoBudget(p,key);
+        p.snapshot.purposeBudgets[key]=budget;
+        p.snapshot.purposeAllocations[key]=weightedDistribution(p.purposePicks[key]||[],budget,key);
+      }
+      updatePurpose(p);
+      return;
+    }
+    const key=button.dataset.purposeAuto,picks=p.purposePicks[key]||[];
+    if(!modes.some(x=>x.key===key))return;
+    const budget=autoBudget(p,key);
+    p.snapshot.purposeBudgets[key]=budget;
+    p.snapshot.purposeAllocations[key]=weightedDistribution(picks,budget,key);
+    updatePurpose(p);
   });
   renderPredictionBuilt=function(p){
     renderBase(p);
+    currentPurposePrediction=p;
     const target=predictionBox.querySelector('.adjust');
     if(target)target.insertAdjacentHTML('beforebegin',purposeHtml(p));
   };
@@ -5427,7 +5518,17 @@ renderHistory();
     result.purpose={};
     for(const key of ['hit','balance','high']){
       const bets=item.purposePicks[key]||[];
-      result.purpose[key]=strategyResult(bets,result.combination,result.payoutPer100,Number(item.betUnit||100),bets.length);
+      const allocation=item.purposeAllocations?.[key];
+      if(!allocation){
+        result.purpose[key]=strategyResult(bets,result.combination,result.payoutPer100,Number(item.betUnit||100),bets.length);
+        continue;
+      }
+      const active=bets.filter(b=>Number(allocation[b.combination]||0)>0);
+      const stake=active.reduce((sum,b)=>sum+Number(allocation[b.combination]),0);
+      const winningStake=Number(allocation[result.combination]||0);
+      const hit=active.some(b=>b.combination===result.combination);
+      const returnAmount=hit?Math.round(Number(result.payoutPer100||0)*winningStake/100):0;
+      result.purpose[key]={count:active.length,hit,stake,returnAmount,profit:returnAmount-stake,roi:stake?returnAmount/stake*100:0};
     }
     if(item.saveMode==='s-pass-observation'){
       for(const entry of [...Object.values(result.comparison||{}),result.hole,...Object.values(result.purpose||{})]){
@@ -5598,5 +5699,94 @@ renderHistory();
   .portal-header-inner{padding:7px 14px}
 }
 </style>
+<style>
+.all-result-controls{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:14px 0}.all-result-controls label{font-weight:700;font-size:13px;color:#313a54}.all-result-controls input,.all-result-controls select{margin:5px 0 0}.all-result-actions{display:flex;gap:8px}.all-result-actions button{margin:0}.all-result-actions button[hidden]{display:none}.all-result-venue{border:1px solid #dfe3ed;border-radius:12px;background:#fff;margin:10px 0;overflow:hidden;color:#202439}.all-result-venue summary{list-style:none;cursor:pointer;padding:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:850}.all-result-venue summary::-webkit-details-marker{display:none}.all-result-venue summary span:last-child{font-size:12px;font-weight:600;color:#53627b;text-align:right}.all-result-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:10px 12px;border-top:1px solid #e5e8f1;font-size:13px}.all-result-row>strong{font-size:16px}.all-result-rno{background:#eee8ff;color:#493884;border-radius:7px;text-align:center;padding:5px 2px;font-weight:850}.all-result-payout{text-align:right;font-size:15px;font-weight:850;color:#225b90;white-space:nowrap}.all-result-meta{grid-column:2/-1;font-size:11px;color:#58647a}.all-result-row.pending .all-result-payout,.all-result-row.failed .all-result-payout{color:#697389}.all-result-row.failed{background:#fff8ed}.all-result-empty{padding:13px;color:#596177;font-size:13px}.all-result-count{color:#596177;font-size:12px;margin-top:8px}
+@media(max-width:600px){.all-result-controls{grid-template-columns:1fr}.all-result-actions{flex-wrap:wrap}.all-result-actions button{flex:1;min-width:145px}.all-result-row{grid-template-columns:38px minmax(0,1fr) auto;gap:6px;font-size:12px;padding:9px}.all-result-row>strong{font-size:15px}.all-result-payout{font-size:13px}.all-result-venue summary{font-size:14px}}
+</style>
+<script>
+/* Official results for the selected day, independent of prediction history. */
+(function(){
+  const dateField=$('allResultDate'),venueField=$('allResultVenue'),choose=$('loadResultVenues'),load=$('loadAllResults'),cancel=$('cancelAllResults'),status=$('allResultStatus'),list=$('allResultList');
+  const venueCache=new Map(),raceCache=new Map(),dayVenueCache=new Map();
+  let runId=0;
+  dateField.value=dateInput.value||todayLocal();dateField.max=todayLocal();
+  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const key=(day,jcd,rno)=>`${day}/${jcd}/${rno}`;
+  const savedRaces=()=>new Set(getHistory().filter(x=>!x.learningOnly).map(x=>key(x.date,String(x.jcd).padStart(2,'0'),Number(x.rno))));
+  function render(groups,day){
+    const saved=savedRaces();let completed=0,pending=0,failed=0;
+    list.innerHTML=groups.map((g,index)=>{
+      if(g.error)return `<details class="all-result-venue"><summary><span>${escapeHtml(g.name)}（${escapeHtml(g.jcd)}）</span><span>取得失敗</span></summary><div class="all-result-empty">レース一覧を取得できませんでした。時間をおいて再取得してください。</div></details>`;
+      const rows=g.races.map(row=>{
+        const data=row.result,hasResult=data?.finished&&/^\d-\d-\d$/.test(String(data.combination||''));
+        if(hasResult)completed++;else if(row.error)failed++;else pending++;
+        const mark=saved.has(key(day,g.jcd,row.rno))?'予想保存あり':'予想未保存';
+        const detail=hasResult?`3連単（艇番） ${escapeHtml(data.combination)}`:row.error?'取得失敗':'未確定';
+        const price=hasResult&&Number.isFinite(Number(data.payout))&&Number(data.payout)>0?Number(data.payout).toLocaleString('ja-JP')+'円':'―';
+        return `<div class="all-result-row ${row.error?'failed':hasResult?'confirmed':'pending'}"><span class="all-result-rno">${Number(row.rno)}R</span><strong>${detail}</strong><span class="all-result-payout">${price}</span><span class="all-result-meta">${hasResult?'払戻は100円あたり'+(data.method?' · 決まり手 '+escapeHtml(data.method):''):row.error?'通信エラー。再取得できます':'結果発表待ち'} · ${mark}</span></div>`;
+      }).join('');
+      return `<details class="all-result-venue" ${groups.length===1||index===0?'open':''}><summary><span>${escapeHtml(g.name)}（${escapeHtml(g.jcd)}）</span><span>${g.races.filter(r=>r.result?.finished).length}/${g.races.length}R 確定</span></summary>${rows||'<div class="all-result-empty">この日のレースがありません。</div>'}</details>`;
+    }).join('');
+    if(groups.length)list.insertAdjacentHTML('afterbegin',`<div class="all-result-count">${groups.length}会場 · ${completed}R確定 · ${pending}R未確定 · ${failed}R取得失敗</div>`);
+  }
+  async function getDayVenues(day){
+    if(dayVenueCache.has(day))return dayVenueCache.get(day);
+    const venues=(await getJSON(`/api/venues?hd=${day}`)).venues||[];
+    dayVenueCache.set(day,venues);
+    return venues;
+  }
+  function setVenueOptions(venues){
+    const selected=venueField.value;
+    venueField.innerHTML='<option value="">全開催場</option>'+venues.map(v=>`<option value="${escapeHtml(v.jcd)}">${escapeHtml(v.name)}</option>`).join('');
+    if(venues.some(v=>v.jcd===selected))venueField.value=selected;
+    else venueField.value='';
+  }
+  choose.addEventListener('click',async()=>{
+    const day=dateField.value.replaceAll('-','');
+    if(!/^\d{8}$/.test(day)||day>todayApi()){status.textContent='今日以前の日付を選んでください。';return}
+    choose.disabled=true;status.textContent='開催場を取得中…';
+    try{const venues=await getDayVenues(day);if(day===dateField.value.replaceAll('-','')){setVenueOptions(venues);status.textContent=`${venues.length}会場。開催場を選ぶか、全開催場のまま結果を表示できます。`}}
+    catch(error){status.textContent=`開催場を取得できません：${error.message}`}
+    finally{choose.disabled=false}
+  });
+  async function loadResults(){
+    const day=dateField.value.replaceAll('-','');
+    if(!/^\d{8}$/.test(day)){status.textContent='日付を選んでください。';return}
+    if(day>todayApi()){status.textContent='未来日の結果は表示できません。';return}
+    const id=++runId;load.disabled=true;cancel.hidden=false;list.innerHTML='';status.textContent='開催場を取得中…';
+    try{
+      const venues=await getDayVenues(day);
+      if(id!==runId)return;
+      setVenueOptions(venues);
+      const targets=venueField.value?venues.filter(v=>v.jcd===venueField.value):venues;
+      if(!targets.length){status.textContent='この日の開催場はありません。';return}
+      const groups=new Array(targets.length);let completedVenues=0;
+      await runPool(targets,2,async(v,index)=>{
+        if(id!==runId)return;
+        const cacheKey=`${day}/${v.jcd}`;let raceData=venueCache.get(cacheKey);
+        try{
+          if(!raceData){raceData=await getJSON(`/api/venue?hd=${day}&jcd=${v.jcd}`);venueCache.set(cacheKey,raceData)}
+          if(id!==runId)return;
+          const races=await runPool((raceData.races||[]).filter(r=>Number(r.rno)>=1&&Number(r.rno)<=12),4,async race=>{
+            const rno=Number(race.rno),k=key(day,v.jcd,rno);
+            if(id!==runId)return {rno};
+            const cached=raceCache.get(k),fresh=cached&&(day<todayApi()||Date.now()-cached.time<60000);
+            if(fresh)return {rno,result:cached.result};
+            if(day===todayApi()&&race.deadlineJST&&Date.parse(race.deadlineJST)>Date.now())return {rno};
+            try{const result=await getCachedResult(day,v.jcd,rno);raceCache.set(k,{result,time:Date.now()});return {rno,result}}
+            catch{return {rno,error:true}}
+          });
+          if(id===runId)groups[index]={jcd:v.jcd,name:v.name,races:races.filter(Boolean).sort((a,b)=>a.rno-b.rno)};
+        }catch{if(id===runId)groups[index]={jcd:v.jcd,name:v.name,error:true,races:[]}}
+        if(id===runId){completedVenues++;render(groups.filter(Boolean),day);status.textContent=`${completedVenues}/${targets.length}会場を取得しました。${completedVenues<targets.length?'続けて取得中…':'結果を表示しました。'}`}
+      });
+    }catch(error){if(id===runId)status.textContent=`結果を取得できません：${error.message}`}
+    finally{if(id===runId){load.disabled=false;cancel.hidden=true}}
+  }
+  load.addEventListener('click',loadResults);
+  cancel.addEventListener('click',()=>{runId++;load.disabled=false;cancel.hidden=true;status.textContent='取得を中止しました。表示済みの結果は残しています。'});
+  dateField.addEventListener('change',()=>{runId++;load.disabled=false;cancel.hidden=true;venueField.innerHTML='<option value="">全開催場</option>';list.innerHTML='';status.textContent='この日付の結果を表示するには取得ボタンを押してください。'});
+})();
+</script>
 </body>
 </html>
