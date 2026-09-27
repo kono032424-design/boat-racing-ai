@@ -79,9 +79,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,su
 </header>
 <div class="wrap">
 <section class="portal-hero" id="home"><p class="portal-eyebrow">RACE INTELLIGENCE · USA LAB</p><h2>今日のレースを、<br>データで読み解く。</h2><p>開催場から予想までひと続き。S勝負・見送り・過去の結果も確認できます。</p><div class="portal-hero-links"><a href="#races">レースを見る →</a><a href="#results">予想実績を見る</a></div></section>
-<div class="portal-intro"><h1>競艇AI V6.6.21</h1><div class="sub">過去の確定結果から選手を評価。買い目・展示・オッズをまとめて確認できます。</div></div>
+<div class="portal-intro"><h1>競艇AI V6.6.35</h1><div class="sub">過去の確定結果から選手を評価。買い目・展示・オッズをまとめて確認できます。</div></div>
 <section id="races" class="portal-section"><div class="portal-section-heading"><span>01 / RACES</span><h2>開催場・レース情報</h2><p>日付を選ぶと開催場が表示されます。会場を選んでレースへ進んでください。</p></div>
 
+<div class="card auto-overview" id="auto-predictions"><div class="title">🚤 今日の保存済み予想｜各会場</div><div class="notice">ページを開くと、選択日の予想が会場ごとに自動表示されます。保存済みの予想は60秒ごとに更新します。出走・展示・オッズが揃う前のレースは保存を待ってから表示されます。</div><div id="autoPredictionsStatus" class="status" aria-live="polite">保存済みの予想を読み込みます。</div><nav id="autoVenueNav" class="auto-venue-nav" aria-label="予想の開催場"></nav><div id="autoPredictionsList"></div></div>
 <div class="card portal-picker"><label>日付</label><input id="date" type="date"><button id="loadVenues">開催場を取得</button><div id="venueStatus" class="status"></div><div id="portalVenueGrid" class="portal-venues" aria-label="開催場一覧"></div><label>開催場</label><select id="venue"><option value="">開催場を選択</option></select><button id="loadRaces">レース一覧を取得</button><div id="raceStatus" class="status"></div></div>
 <div class="card" id="race-list"><div class="title">全レース</div><div id="raceGrid" class="race-grid"></div></div>
 </section>
@@ -117,7 +118,7 @@ const CACHE_TTL=60000,RESULT_TTL=30000,SCAN_CONCURRENCY=4;
 const COMPONENT_NAMES={lane:"枠・コース基本力",class:"級別",national:"全国勝率",local:"当地勝率",st:"平均ST",motor:"モーター",exhibition:"展示タイム",exhibitionST:"展示ST",course:"展示コース"};
 const ROLE_LABEL={first:"1着",second:"2着",third:"3着"};
 const ROLE_WEIGHTS={first:{lane:1.25,class:.90,national:1.15,local:.75,st:1.25,motor:.70,exhibition:.80,exhibitionST:.90,course:1.15},second:{lane:.75,class:.85,national:.90,local:1.05,st:.85,motor:1.15,exhibition:1.15,exhibitionST:1,course:.75},third:{lane:.38,class:.65,national:.78,local:1.08,st:.68,motor:1.32,exhibition:1.22,exhibitionST:.98,course:.46}};
-function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+function todayLocal(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
 function todayApi(){return todayLocal().replaceAll("-","")}
 function yesterdayApi(){const d=new Date();d.setDate(d.getDate()-1);return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`}
 function apiDate(){return dateInput.value.replaceAll("-","")}
@@ -5547,14 +5548,14 @@ renderHistory();
   alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21'&&!item.learningOnly)};
   alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21')};
   const h=document.querySelector('h1'),v=document.querySelector('.version');
-  if(h)h.textContent='競艇AI V6.6.21';
-  if(v)v.textContent='Boat Racing AI V6.6.21';
+  if(h)h.textContent='競艇AI V6.6.35';
+  if(v)v.textContent='Boat Racing AI V6.6.35';
 })();
 </script>
 
 <script>
 (function(){
-  document.title='競艇AI V6.6.21';
+  document.title='競艇AI V6.6.35';
   const card=document.getElementById('importPastLearning')?.closest('.card');
   if(!card)return;
   const info=document.createElement('div');
@@ -5800,32 +5801,63 @@ renderHistory();
 
 <style>
 [hidden], .card[hidden] {display:none!important}
-.auto-overview{background:#fff;color:#202537}
+.auto-overview{background:#fff;color:#202537;scroll-margin-top:100px}
 .auto-overview .notice,.auto-overview .status{color:#475569}
-.auto-pred-row{padding:11px 12px;margin:8px 0;border:1px solid #dee5f1;border-radius:12px;background:#f8fafc;color:#172033;line-height:1.7}
+.auto-venue-nav{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 17px}
+.auto-venue-nav a{background:#f1edff;border:1px solid #d9cff7;border-radius:100px;padding:7px 11px;color:#4c3480;font-size:13px;font-weight:750;text-decoration:none}
+.auto-venue{margin:15px 0;border:1px solid #dbe2ed;border-radius:14px;overflow:hidden;scroll-margin-top:105px}
+.auto-venue h3{background:#f3efff;color:#241b42;font-size:17px;margin:0;padding:12px 14px}
+.auto-venue h3 small{font-weight:500;color:#635879;margin-left:7px;font-size:12px}
+.auto-venue-grid{padding:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:9px}
+.auto-pred-row{padding:11px 12px;border:1px solid #dee5f1;border-radius:12px;background:#f8fafc;color:#172033;line-height:1.7}
 .auto-pred-row strong{color:#172033}
-.auto-pred-row small{display:block;color:#475569}
-.auto-pred-row .badge{padding:3px 8px;background:#ede9fe;color:#513398;border-radius:9px;font-size:12px;font-weight:700}
+.auto-pred-row small{display:block;color:#475569;overflow-wrap:anywhere}
+.auto-pred-row .badge{padding:3px 8px;background:#ede9fe;color:#513398;border-radius:9px;font-size:12px;font-weight:700;display:inline-block;margin-left:4px}
+.auto-pred-row .badge.manshu{background:#fff0d1;color:#854b00}
 </style>
 <script>
 (function(){
  const status=document.getElementById('autoPredictionsStatus');
  const list=document.getElementById('autoPredictionsList');
+ const nav=document.getElementById('autoVenueNav');
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ let trackingToday=true,requestNumber=0,lastDay='';
+ function render(data){
+  const groups=new Map();
+  for(const p of data.predictions||[]){
+   const jcd=String(p.jcd||'').padStart(2,'0');
+   if(!groups.has(jcd))groups.set(jcd,{name:p.venue||jcd,races:[]});
+   groups.get(jcd).races.push(p);
+  }
+  const sorted=[...groups].sort(([a],[b])=>Number(a)-Number(b));
+  status.textContent=`${data.date.slice(0,4)}/${data.date.slice(4,6)}/${data.date.slice(6,8)}　${groups.size}会場・${data.count}Rの予想を保存済み（万舟通知の目安 ${data.manshuThresholdPercent}%以上）`;
+  nav.innerHTML=sorted.map(([jcd,g])=>`<a href="#auto-venue-${esc(jcd)}">${esc(g.name)} ${g.races.length}R</a>`).join('');
+  list.innerHTML=sorted.map(([jcd,g])=>{
+   const rows=g.races.sort((a,b)=>Number(a.rno)-Number(b.rno)).map(p=>{
+    const percent=p.manshuProbability==null?null:(Number(p.manshuProbability)*100).toFixed(1);
+    const s=p.confidence==='S';
+    const kind=s?(p.decision==='PASS'?'⚠️ S見送り':'🔥 S勝負'):`${p.confidence||'-'}評価`;
+    const high=percent!=null&&Number(percent)>=Number(data.manshuThresholdPercent);
+    return `<article class="auto-pred-row"><strong>${esc(p.rno)}R</strong> <span class="badge">${esc(kind)}</span>${high?'<span class="badge manshu">💥 万舟高確率</span>':''}<small>締切 ${esc(p.deadline||'-')} ／ 万舟推定 ${percent==null?'算出待ち':esc(percent)+'%'}</small><small>本線6点：${esc((p.main6||[]).join(' / ')||'-')}</small></article>`;
+   }).join('');
+   return `<section class="auto-venue" id="auto-venue-${esc(jcd)}"><h3>${esc(g.name)}<small>${g.races.length}Rの予想</small></h3><div class="auto-venue-grid">${rows}</div></section>`;
+  }).join('')||'<p class="portal-empty">この日付の保存済み予想はまだありません。データが揃ったレースから自動的に追加されます。</p>';
+ }
  async function load(){
-  const date=apiDate();
+  if(trackingToday&&dateInput.value!==todayLocal()){
+   dateInput.value=todayLocal();
+   dateInput.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  const date=apiDate(),number=++requestNumber;
+  if(!/^\d{8}$/.test(date))return;
   try{
    const data=await getJSON('/api/today-predictions?date='+encodeURIComponent(date));
-   if(apiDate()!==date)return;
-   status.textContent=`${data.count}R 保存済み / 万舟通知の目安 ${data.manshuThresholdPercent}%以上。出走・直前・オッズが未取得のレースは締切前に再試行します。`;
-   list.innerHTML=data.predictions.map(p=>{
-    const m=p.manshuProbability==null?'算出待ち':(Number(p.manshuProbability)*100).toFixed(1)+'%';
-    const kind=p.confidence==='S'?(p.decision==='PASS'?'⚠️ S見送り':'🔥 S勝負'):p.manshuProbability!=null&&p.manshuProbability*100>=data.manshuThresholdPercent?'💥 万舟高確率':`${p.confidence||'-'}評価`;
-    return `<div class="auto-pred-row"><strong>${esc(p.venue)} ${esc(p.rno)}R</strong> <span class="badge">${esc(kind)}</span><small>締切 ${esc(p.deadline||'-')} / 万舟推定 ${esc(m)} / 本線6点 ${esc((p.main6||[]).join('・')||'-')}</small></div>`;
-   }).join('')||'<p>予想データの到着を待っています。</p>';
-  }catch(e){status.textContent='予想一覧を取得できません：'+e.message}
+   if(number!==requestNumber||apiDate()!==date)return;
+   lastDay=date;
+   render(data);
+  }catch(e){if(number===requestNumber)status.textContent='保存済み予想を取得できません：'+e.message}
  }
- dateInput.addEventListener('change',load);
+ dateInput.addEventListener('change',()=>{trackingToday=dateInput.value===todayLocal();if(apiDate()!==lastDay){nav.innerHTML='';list.innerHTML='';status.textContent='保存済みの予想を読み込みます。'}load()});
  load();setInterval(load,60000);
 })();
 </script>
