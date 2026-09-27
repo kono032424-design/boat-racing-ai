@@ -1,7 +1,7 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.19";
-const AI_VERSION = "6.7.5";
+const WORKER_VERSION = "6.6.21";
+const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
@@ -7224,6 +7224,63 @@ function selectHoleBets(
    サーバーAI予想生成
 ========================= */
 
+/* 予想日の前30日だけを使用し、艇番による基礎勝率との差を小さく加点する。 */
+function racerHistoryName(value) {
+  return String(value||'').replace(/[\s\u3000]/g,'').trim();
+}
+
+function buildRacerHistoryStats(history,asOfDate) {
+  const byId=Object.create(null),byName=Object.create(null);
+  const day=String(asOfDate||'');
+  const time=Date.UTC(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8)));
+  const cutoff=Number.isFinite(time)?new Date(time-30*86400000).toISOString().slice(0,10).replaceAll('-',''):'00000000';
+  const firstBase={1:.50,2:.15,3:.12,4:.10,5:.07,6:.06};
+  const topBase={1:.80,2:.55,3:.49,4:.44,5:.39,6:.33};
+  const add=(store,key,row,venue,win,top,baseWin,baseTop)=>{
+    if(!key)return;
+    const value=store[key]||(store[key]={starts:0,wins:0,top3:0,expectedWins:0,expectedTop3:0,venue:{}});
+    value.starts++;value.wins+=Number(win);value.top3+=Number(top);
+    value.expectedWins+=baseWin;value.expectedTop3+=baseTop;
+    if(venue){const part=value.venue[venue]||(value.venue[venue]={starts:0,wins:0,expectedWins:0});
+      part.starts++;part.wins+=Number(win);part.expectedWins+=baseWin}
+  };
+  for(const item of history||[]){
+    const date=String(item.date||'');
+    if(date>=day||date<cutoff||!item.result?.finished)continue;
+    const podium=item.result.winningLanes?.slice(0,3).map(Number);
+    if(!podium||podium.length!==3||new Set(podium).size!==3)continue;
+    for(const r of item.racersDetailed||[]){
+      const lane=Number(r.lane),name=racerHistoryName(r.name),id=String(r.registration||'');
+      if(!firstBase[lane]||!name)continue;
+      const win=lane===podium[0],top=podium.includes(lane),venue=String(item.jcd||'').padStart(2,'0');
+      add(byName,name,r,venue,win,top,firstBase[lane],topBase[lane]);
+      if(/^\d{4}$/.test(id))add(byId,id,r,venue,win,top,firstBase[lane],topBase[lane]);
+    }
+  }
+  return {byId,byName};
+}
+
+function applyRacerHistoryScores(racers,stats,context) {
+  return racers.map(r=>{
+    const id=String(r.registration||''),name=racerHistoryName(r.name);
+    const byId=stats?.byId?.[id],byName=stats?.byName?.[name];
+    const record=byId?.starts>=2?byId:(byName||byId);
+    if(!record?.starts)return {...r,historyRaces:0,historyWins:0,historyTop3:0,historyAdjustment:0};
+    const n=record.starts;
+    const winSignal=(record.wins-record.expectedWins)/(n+8);
+    const topSignal=(record.top3-record.expectedTop3)/(n+8);
+    const venueRecord=record.venue?.[String(context.jcd||'').padStart(2,'0')];
+    const venueSignal=venueRecord?(venueRecord.wins-venueRecord.expectedWins)/(venueRecord.starts+10):0;
+    const sampleFactor=Math.min(1,n/5);
+    const adjustment=Math.round(Math.max(-6,Math.min(6,(40*winSignal+12*topSignal+12*venueSignal)*sampleFactor))*10)/10;
+    return {...r,overallScore:Math.round((r.overallScore+adjustment)*10)/10,
+      firstScore:Math.round((r.firstScore+adjustment*1.2)*10)/10,
+      secondScore:Math.round((r.secondScore+adjustment*.65)*10)/10,
+      thirdScore:Math.round((r.thirdScore+adjustment*.45)*10)/10,
+      historyRaces:n,historyWins:record.wins,historyTop3:record.top3,historyAdjustment:adjustment};
+  });
+}
+
 async function buildServerPrediction(
   env,
   racers,
@@ -7236,8 +7293,9 @@ async function buildServerPrediction(
       context.date
     );
 
+  const historicalStats=buildRacerHistoryStats(learned._history,context.date);
   const modelRacers =
-    racers.map(
+    applyRacerHistoryScores(racers.map(
       racer => {
         const components =
           scoreComponents(
@@ -7278,7 +7336,7 @@ async function buildServerPrediction(
             )
         };
       }
-    );
+    ),historicalStats,context);
 
   /*
     ① 1号艇の直前データ裏付けを追加チェック
@@ -7478,8 +7536,12 @@ async function buildServerPrediction(
           name:
             racer.name,
 
-          class:
-            racer.class,
+          registration:racer.registration,
+          class:racer.class,
+          historyRaces:racer.historyRaces,
+          historyWins:racer.historyWins,
+          historyTop3:racer.historyTop3,
+          historyAdjustment:racer.historyAdjustment,
 
           components:{
             ...racer.components
@@ -8180,6 +8242,8 @@ async function getLearningByRaceKey(
         rno,
         finished,
         historical_import,
+        race_data_json,
+        result_json,
         updated_at
 
       FROM learning_races
@@ -12441,7 +12505,7 @@ function shiftRaceDate(dateKey, days) {
 }
 
 async function ensureHistoricalBackfillState(env) {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS historical_backfill_state (
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS historical_results_backfill_state (
     id INTEGER PRIMARY KEY CHECK(id=1),
     cursor_date TEXT,
     venue_index INTEGER NOT NULL DEFAULT 0,
@@ -12458,11 +12522,11 @@ async function ensureHistoricalBackfillState(env) {
 async function readHistoricalBackfillState(env) {
   await ensureHistoricalBackfillState(env);
   const yesterday=jstDateKeyOffset(-1);
-  let state=await env.DB.prepare('SELECT * FROM historical_backfill_state WHERE id=1').first();
+  let state=await env.DB.prepare('SELECT * FROM historical_results_backfill_state WHERE id=1').first();
   if (!state) {
-    await env.DB.prepare(`INSERT INTO historical_backfill_state
+    await env.DB.prepare(`INSERT INTO historical_results_backfill_state
       (id,cursor_date,last_yesterday) VALUES (1,?,?)`).bind(yesterday,yesterday).run();
-    state=await env.DB.prepare('SELECT * FROM historical_backfill_state WHERE id=1').first();
+    state=await env.DB.prepare('SELECT * FROM historical_results_backfill_state WHERE id=1').first();
   }
   if (state.last_yesterday!==yesterday) {
     state.priority_date=yesterday;
@@ -12475,7 +12539,7 @@ async function readHistoricalBackfillState(env) {
 }
 
 async function writeHistoricalBackfillState(env,state) {
-  await env.DB.prepare(`UPDATE historical_backfill_state SET
+  await env.DB.prepare(`UPDATE historical_results_backfill_state SET
     cursor_date=?,venue_index=?,next_rno=?,priority_date=?,
     priority_venue_index=?,priority_next_rno=?,last_yesterday=?,
     failure_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`)
@@ -12489,7 +12553,7 @@ function makeHistoricalSnapshot(race,before,result,context) {
   const weights=blankWeights();
   const detailed=racers.map(r=>{
     const components=scoreComponents(r,racers);
-    return {lane:r.lane,name:r.name,class:r.class,components,
+    return {lane:r.lane,name:r.name,registration:r.registration,class:r.class,components,
       overallScore:overallScore(components,weights),
       firstScore:roleScore(components,weights,'first'),
       secondScore:roleScore(components,weights,'second'),
@@ -12503,20 +12567,28 @@ function makeHistoricalSnapshot(race,before,result,context) {
 
 async function backfillOneRace(env,date,jcd,venue,rno) {
   const existing=await getLearningByRaceKey(env,makeRaceKey(date,jcd,rno));
-  if (existing?.finished) return 'EXISTING';
-  const raceResult=await resultData(date,jcd,rno);
+  const savedSnapshot=parseJsonSafe(existing?.race_data_json,null);
+  if (existing?.finished&&savedSnapshot?.racersDetailed?.length===6) return 'EXISTING';
+  const savedResult=parseJsonSafe(existing?.result_json,null);
+  const raceResult=existing?.finished&&savedResult?.finished
+    ?savedResult:await resultData(date,jcd,rno);
   if (!raceResult.finished||!Array.isArray(raceResult.winningLanes)||raceResult.winningLanes.length<3)
     throw new Error('確定結果が取得できません');
-  if (existing) {
+  if (existing?.race_data_json&&savedSnapshot?.racersDetailed?.length===6) {
     await saveLearningRace(env,{race_date:date,jcd,venue,rno,result:raceResult,finished:true});
     return 'UPDATED';
+  }
+  // 結果を先に保存する。選手情報が欠けても確定結果は残す。
+  if (!existing?.finished) {
+    await saveLearningRace(env,{race_date:date,jcd,venue,rno,result:raceResult,
+      finished:true,historical_import:!existing});
   }
   const [race,before]=await Promise.all([raceData(date,jcd,rno),beforeData(date,jcd,rno).catch(()=>({racers:[]}))]);
   if (race.racers?.length!==6) throw new Error('選手情報6艇が取得できません');
   const snapshot=makeHistoricalSnapshot(race,before,raceResult,{date,jcd,venue,rno});
   await saveLearningRace(env,{race_date:date,jcd,venue,rno,race:snapshot,before,
     result:raceResult,finished:true,historical_import:true});
-  return 'IMPORTED';
+  return existing?.finished?'ENRICHED':'IMPORTED';
 }
 
 async function runHistoricalBackfill(env) {
@@ -12546,7 +12618,7 @@ async function runHistoricalBackfill(env) {
   }
   let venueIndex=Number(priority?state.priority_venue_index:state.venue_index)||0;
   let rno=Number(priority?state.priority_next_rno:state.next_rno)||1;
-  let processed=0,imported=0,existing=0,updated=0,skipped=0;
+  let processed=0,imported=0,enriched=0,existing=0,updated=0,skipped=0;
   while (venueIndex<venuesForDate.length&&processed<4) {
     const target=venuesForDate[venueIndex];
     let schedule;
@@ -12574,6 +12646,7 @@ async function runHistoricalBackfill(env) {
       try {
         const result=await backfillOneRace(env,date,target.jcd,target.name,current);
         if (result==='IMPORTED') imported++;
+        else if (result==='ENRICHED') enriched++;
         else if (result==='UPDATED') updated++;
         else existing++;
         state.failure_count=0;
@@ -12595,7 +12668,7 @@ async function runHistoricalBackfill(env) {
   else {state.venue_index=venueIndex;state.next_rno=rno}
   await writeHistoricalBackfillState(env,state);
   return {status:skipped?'PARTIAL':'RUNNING',date,venue:venuesForDate[Math.min(venueIndex,venuesForDate.length-1)]?.name,
-    processed,imported,updated,existing,skipped,priority,cursorDate:state.cursor_date};
+    processed,imported,enriched,updated,existing,skipped,priority,cursorDate:state.cursor_date};
 }
 
 async function runScheduledAutomation(
@@ -12915,7 +12988,7 @@ async function automationStatus(env) {
     env
   );
   await ensureHistoricalBackfillState(env);
-  const historicalBackfillState=await env.DB.prepare("SELECT * FROM historical_backfill_state WHERE id=1").first();
+  const historicalBackfillState=await env.DB.prepare("SELECT * FROM historical_results_backfill_state WHERE id=1").first();
 
   const latest =
     await env.DB
@@ -15734,9 +15807,16 @@ export default {
       /* 自動取り込みの進捗。保存された日付・会場・レース番号のみ公開。 */
       if (url.pathname === "/api/backfill-status") {
         await ensureHistoricalBackfillState(env);
-        const state=await env.DB.prepare("SELECT cursor_date,venue_index,next_rno,priority_date,priority_venue_index,priority_next_rno,last_yesterday,updated_at FROM historical_backfill_state WHERE id=1").first();
-        const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM learning_races WHERE historical_import=1 AND finished=1").first();
-        return json({ok:true,state:state||null,imported:Number(count?.total||0),windowDays:30,perRun:4});
+        const state=await env.DB.prepare("SELECT cursor_date,venue_index,next_rno,priority_date,priority_venue_index,priority_next_rno,last_yesterday,updated_at FROM historical_results_backfill_state WHERE id=1").first();
+        const start=jstDateKeyOffset(-30),end=todayJST();
+        const counts=await env.DB.prepare(`SELECT
+          COUNT(*) AS results,
+          SUM(CASE WHEN race_data_json IS NOT NULL THEN 1 ELSE 0 END) AS learning
+          FROM learning_races WHERE race_date>=? AND race_date<?
+            AND finished=1 AND result_json IS NOT NULL`)
+          .bind(start,end).first();
+        return json({ok:true,state:state||null,results:Number(counts?.results||0),
+          learning:Number(counts?.learning||0),windowDays:30,perRun:4});
       }
 
       if (url.pathname === "/api/learned-weights") {
@@ -15744,7 +15824,8 @@ export default {
         if (!/^\d{8}$/.test(hd)) return json({ok:false,error:"日付形式が不正です"},400);
         const learned=await calculateRoleLearnedWeights(env,hd);
         return json({ok:true,learned:{active:learned.active,races:learned.races,
-          roles:learned.roles,overall:learned.overall}});
+          roles:learned.roles,overall:learned.overall,
+          racerHistory:buildRacerHistoryStats(learned._history,hd)}});
       }
 
       /* ===== VENUES ===== */
