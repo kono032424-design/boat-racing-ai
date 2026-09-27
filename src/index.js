@@ -1,11 +1,20 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.24";
+const WORKER_VERSION = "6.6.34";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
 const AUTO_MAX_MINUTES = 50;
 const LINE_FINAL_MAX_MINUTES = 35;
+// 0〜100 (%): Worker の MANSHU_NOTIFY_MIN_PERCENT で変更可能。
+function manshuThreshold(env) {
+  const n = Number(env.MANSHU_NOTIFY_MIN_PERCENT ?? 15);
+  return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 15;
+}
+function isManshuHigh(pick, env) {
+  return Number.isFinite(pick.manshuProbability) &&
+    pick.manshuProbability * 100 >= manshuThreshold(env);
+}
 
 /*
   LINE月間送信数を節約する運用モード
@@ -15,8 +24,8 @@ const LINE_FINAL_MAX_MINUTES = 35;
   - 日次集計は1日1回のまま
 */
 const LINE_EARLY_NOTIFICATIONS_ENABLED = false;
-const LINE_PASS_NOTIFICATIONS_ENABLED = false;
-const LINE_DAILY_SUMMARY_ENABLED = true;
+const LINE_PASS_NOTIFICATIONS_ENABLED = true;
+const LINE_DAILY_SUMMARY_ENABLED = false;
 
 /*
   V6.6.6 サイトPush通知
@@ -26,7 +35,7 @@ const LINE_DAILY_SUMMARY_ENABLED = true;
   - 通知本文に買い目そのものは載せず、タップでS評価一覧を開く
 */
 const WEB_PUSH_S_BET_ENABLED = true;
-const WEB_PUSH_DAILY_SUMMARY_ENABLED = true;
+const WEB_PUSH_DAILY_SUMMARY_ENABLED = false;
 const WEB_PUSH_FINAL_MAX_MINUTES = 35;
 const WEB_PUSH_CONTACT =
   "https://aged-hill-9a89.kono032424.workers.dev/";
@@ -2438,6 +2447,32 @@ async function listPredictions(
     result.results ||
     []
   );
+}
+
+async function listDailyPredictions(env, raceDate) {
+  const rows = await env.DB.prepare(`
+    SELECT race_key, venue, jcd, rno, deadline, confidence, decision,
+      stable_score, prediction_json, analyzed_at
+    FROM predictions WHERE race_date = ?
+    ORDER BY jcd ASC, rno ASC
+  `).bind(raceDate).all();
+  return (rows.results || []).map(row => {
+    const snapshot = parseJsonSafe(row.prediction_json, {}) || {};
+    return {
+      raceKey: row.race_key,
+      venue: row.venue,
+      jcd: row.jcd,
+      rno: Number(row.rno),
+      deadline: row.deadline,
+      confidence: row.confidence,
+      decision: row.decision,
+      stableScore: row.stable_score,
+      manshuProbability: snapshot.manshu?.probability ?? null,
+      manshuCombinations: snapshot.manshu?.combinations ?? null,
+      analyzedAt: row.analyzed_at,
+      main6: (snapshot.bets || []).slice(0, 6).map(bet => bet.combination)
+    };
+  });
 }
 
 /* =========================
@@ -7455,6 +7490,19 @@ async function buildServerPrediction(
       })
     );
 
+  // 100円の3連単払戻が1万円以上となる組み合わせの確率。
+  // オッズが120通り揃わない場合は判定を保留する。
+  const manshu = {
+    probability: allBets.length === 120
+      ? Math.min(1, Math.max(0, allBets
+          .filter(bet => bet.odds >= 100)
+          .reduce((sum, bet) => sum + bet.probability, 0)))
+      : null,
+    combinations: allBets.filter(bet => bet.odds >= 100).length,
+    oddsCoverage: allBets.length,
+    cutoffOdds: 100
+  };
+
   const snapshot = {
     id:
       `server-${context.date}-${context.jcd}-${context.rno}-${Date.now()}`,
@@ -7592,7 +7640,8 @@ async function buildServerPrediction(
 
     holeBets,
 
-    allBetRanking
+    allBetRanking,
+    manshu
   };
 
   return {
@@ -8479,11 +8528,9 @@ async function analyzeAndSaveTarget(
   if (
     !force
   ) {
-    const existing =
-      await getLearningByRaceKey(
-        env,
-        raceKey
-      );
+    const existing = await env.DB.prepare(
+      "SELECT race_key FROM predictions WHERE race_key = ? LIMIT 1"
+    ).bind(raceKey).first();
 
     if (
       existing
@@ -8520,6 +8567,10 @@ async function analyzeAndSaveTarget(
   const snapshot =
     data.prediction
       .snapshot;
+
+  if (target.deadlineJST && Date.now() >= Date.parse(target.deadlineJST)) {
+    throw new Error("締切を過ぎたため予想を保存しませんでした");
+  }
 
   const note =
     buildNoteArticle(
@@ -8573,15 +8624,8 @@ async function analyzeAndSaveTarget(
   let predictionSaved =
     false;
 
-  /*
-    販売・投稿候補は
-    S評価だけ predictions に保存。
-  */
-
-  if (
-    snapshot.confidence ===
-    "S"
-  ) {
+  /* 全評価の予想を購入額0円の観察記録として保存する。 */
+  {
     await savePrediction(
       env,
       {
@@ -8694,11 +8738,8 @@ async function analyzeAndSaveTarget(
     noteType:
       note.noteType,
 
-    noteTitle:
-      snapshot.confidence ===
-        "S"
-        ? note.title
-        : null,
+    noteTitle: note.title,
+    manshuProbability: snapshot.manshu?.probability ?? null,
 
     main6:
       snapshot.bets
@@ -10476,7 +10517,8 @@ async function runWebPushNotifications(
     ))
       .filter(
         pick =>
-          pick.decision === "BET"
+          (pick.confidence === "S" && ["BET", "PASS"].includes(pick.decision)) ||
+          isManshuHigh(pick, env)
       );
 
   let candidates = 0;
@@ -10523,14 +10565,18 @@ async function runWebPushNotifications(
         env,
         {
           eventKey:
-            `SBET:${pick.raceKey}`,
-          eventType:"S_BET",
+            pick.confidence === "S" && pick.decision === "BET"
+              ? `SBET:${pick.raceKey}`
+              : pick.confidence === "S"
+                ? `SPASS:${pick.raceKey}`
+                : `MANSHU:${pick.raceKey}`,
+          eventType:"PICK",
           title:
-            `🔥 S勝負｜${pick.venue} ${pick.rno}R`,
+            `${pick.confidence === "S" ? pick.decision === "PASS" ? "⚠️ S見送り" : "🔥 S勝負" : "💥 万舟高確率"}｜${pick.venue} ${pick.rno}R`,
           body:
-            `締切 ${pick.deadline || "-"}｜Sスコア ${score}｜タップして本線6点＋押さえ4点を確認`,
+            `締切 ${pick.deadline || "-"}｜万舟推定 ${Number.isFinite(pick.manshuProbability) ? (pick.manshuProbability * 100).toFixed(1) + "%" : "-"}｜Sスコア ${score}`,
           targetUrl:
-            "/api/s-picks-view"
+            "/#auto-predictions"
         }
       );
 
@@ -10876,6 +10922,7 @@ function buildLineSBetMessage(pick) {
 🔥 S勝負が出ました
 ${pick.venue} ${pick.rno}R
 締切：${pick.deadline || "-"}
+万舟推定確率：${formatManshu(pick)}
 信頼度：${pick.stars || "-"}
 Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
 1着推定力：${share}
@@ -10980,6 +11027,7 @@ function buildLineSPassMessage(pick) {
 ⚠️ S評価・見送り
 ${pick.venue} ${pick.rno}R
 締切：${pick.deadline || "-"}
+万舟推定確率：${formatManshu(pick)}
 信頼度：${pick.stars || "-"}
 Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed(1)}
 1着推定力：${share}
@@ -11048,6 +11096,18 @@ Sスコア：${pick.stableScore == null ? "-" : Number(pick.stableScore).toFixed
 ※オッズ・直前情報の変化により内容が変わる場合があります。`;
 }
 
+function formatManshu(pick) {
+  return Number.isFinite(pick.manshuProbability)
+    ? `${(pick.manshuProbability * 100).toFixed(1)}%（3連単100円あたり払戻1万円以上）`
+    : "オッズ未確定";
+}
+function buildLineManshuMessage(pick, env) {
+  const examples = (pick.highOddsBets || []).slice(0, 3)
+    .map(bet => `${bet.combination} ${Number(bet.odds).toFixed(1)}倍`)
+    .join(" / ");
+  return `🐰🚤 うさLAB｜競艇AI予想\n💥 万舟高確率（${manshuThreshold(env)}%以上）\n${pick.venue} ${pick.rno}R　締切 ${pick.deadline || "-"}\n万舟推定確率：${formatManshu(pick)}\n参考組み合わせ：${examples || "-"}\n評価：${pick.confidence}／購入指示ではありません。\n予想一覧：https://aged-hill-9a89.kono032424.workers.dev/\n※予想時点のオッズによる推定であり、的中・払戻を保証しません。`;
+}
+
 function lineNotificationKey(
   pick,
   stage
@@ -11060,9 +11120,12 @@ function lineNotificationKey(
 
   if (
     pick.decision === "PASS"
+    && pick.confidence === "S"
   ) {
     return `PASS:${pick.raceKey}`;
   }
+
+  if (pick.confidence !== "S") return `MANSHU:${pick.raceKey}`;
 
   /*
     S勝負はV6.5.4までの送信履歴を
@@ -11326,8 +11389,7 @@ async function listSLinePredictions(
         FROM predictions
 
         WHERE race_date = ?
-          AND confidence = 'S'
-          AND decision IN ('BET', 'PASS')
+          AND (confidence = 'S' OR json_extract(prediction_json, '$.manshu.probability') IS NOT NULL)
 
         ORDER BY
           CASE
@@ -11440,6 +11502,12 @@ async function listSLinePredictions(
           row.analyzed_at,
         confidence:
           row.confidence,
+        manshuProbability: snapshot.manshu?.probability ?? null,
+        manshuCombinations: snapshot.manshu?.combinations ?? null,
+        highOddsBets: (snapshot.allBetRanking || [])
+          .filter(bet => Number(bet.odds) >= 100)
+          .sort((a, b) => Number(b.probability) - Number(a.probability))
+          .slice(0, 3),
         decision:
           row.decision,
         stableScore:
@@ -11485,6 +11553,9 @@ async function listSLinePredictions(
           row.updated_at
       };
     }
+  ).filter(pick =>
+    (pick.confidence === "S" && ["BET", "PASS"].includes(pick.decision)) ||
+    isManshuHigh(pick, env)
   );
 }
 
@@ -11528,13 +11599,11 @@ async function runLineNotifications(
       raceDate
     );
 
-  const picks =
-    allPicks.filter(
-      pick =>
-        LINE_PASS_NOTIFICATIONS_ENABLED
-        ||
-        pick.decision === "BET"
-    );
+  const picks = allPicks.filter(pick =>
+    (pick.confidence === "S" &&
+      (LINE_PASS_NOTIFICATIONS_ENABLED || pick.decision === "BET")) ||
+    isManshuHigh(pick, env)
+  );
 
   const stateMap =
     await listLineNotificationStates(
@@ -11605,7 +11674,9 @@ async function runLineNotifications(
         existing?.status !== "EXPIRED"
       ) {
         const message =
-          pick.decision === "PASS"
+          pick.confidence !== "S"
+            ? buildLineManshuMessage(pick, env)
+            : pick.decision === "PASS"
             ? buildLineSPassMessage(
                 pick
               )
@@ -11708,7 +11779,9 @@ async function runLineNotifications(
         ? buildLineEarlyMessage(
             pick
           )
-        : pick.decision === "PASS"
+        : pick.confidence !== "S"
+          ? buildLineManshuMessage(pick, env)
+          : pick.decision === "PASS"
           ? buildLineSPassMessage(
               pick
             )
@@ -15759,6 +15832,15 @@ export default {
             )
           )
         });
+      }
+
+      // Public read-only overview; purchase amounts and private notes are omitted.
+      if (url.pathname === "/api/today-predictions") {
+        const date = url.searchParams.get("date") || todayJST();
+        if (!/^\d{8}$/.test(date)) return json({ok:false,error:"dateはYYYYMMDDで指定してください"},400);
+        const predictions = await listDailyPredictions(env, date);
+        return json({ok:true,date,count:predictions.length,
+          manshuThresholdPercent:manshuThreshold(env),predictions});
       }
 
       /* =====================
