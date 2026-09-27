@@ -88,19 +88,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,su
 <section class="portal-section" id="race-detail"><div class="portal-section-heading"><span>02 / RACE DETAIL</span><h2>出走選手とAI予想</h2><p>レースを選ぶと、3種類の予想・選手の評価・3連単・穴候補を表示します。</p></div>
 <div class="card"><div id="raceTitle" class="title">選手データ</div><div id="racerStatus" class="status">レースを選択してください</div><div id="racers"></div></div>
 <div class="card"><div class="title">AI予想｜3種類の買い目を比較</div><div id="predictionStatus" class="status">レースを選択してください</div><div id="prediction"></div></div>
-<div class="card"><div class="title">このレースを保存</div><label>1点購入額</label><input id="betUnit" type="number" value="100" min="100" step="100"><button id="savePrediction">本線＋穴狙い＋120通り順位を保存</button><div id="saveStatus" class="status"></div></div>
 </section>
 <section class="portal-section"><div class="portal-section-heading"><span>03 / S PICKS</span><h2>S評価をチェック</h2><p>S勝負と見送りを同じ一覧で確認できます。</p></div>
-<div class="card" id="s-picks"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><label>S勝負 保存時1点金額</label><input id="sBetUnit" type="number" value="100" min="100" step="100"><button id="saveAllS" class="s-save">🔥 S勝負だけまとめて保存</button><button id="saveAllSPass" class="secondary">⚠️ S見送りをまとめて保存</button><div id="sSaveStatus" class="status"></div><div class="notice">S見送りは購入なしの学習・結果確認用に保存します。穴狙いの購入額はS勝負にのみ適用します。</div></div>
+<div class="card" id="s-picks"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><div class="notice">予想は全レースを自動保存します。S勝負・S見送り・万舟高確率だけを通知します。</div></div>
 </section>
 <section class="portal-section" id="results"><div class="portal-section-heading"><span>04 / PERFORMANCE</span><h2>AI予想実績・レース結果</h2><p>期間や買い目を選んで、的中率と収支を確認できます。</p></div>
-<div class="card" id="performanceDashboard"><div class="title">📊 AI予想実績</div><div id="portalCloudPerformance" class="portal-cloud"><strong>自動分析 S勝負の成績</strong><div class="portal-empty">成績を読み込みます</div></div><div class="notice">下の記録はこの端末で保存し、結果を確認した購入予想です。2026/9/27以降を集計し、購入額は保存時の1点金額で計算します。</div><div class="dash-controls"><label>期間<select id="dashPeriod"><option value="30">直近30日</option><option value="7">直近7日</option><option value="all">全期間</option></select></label><label>買い目<select id="dashStyle"><option value="p6">本線6点</option><option value="p10">本線10点</option><option value="p15">本線15点</option><option value="hole">穴候補</option><option value="hit">🎯 的中特化型AI（6点）</option><option value="balance">⚖️ バランス型AI（6点）</option><option value="high">💥 一撃重視型AI（最大4点）</option></select></label></div><div id="dashSummary"></div><div class="title" style="margin-top:20px">レース別結果</div><div id="dashResults"></div><div class="title" style="margin-top:20px">保存済みレースの選手ランキング</div><div class="notice">結果を確認できた保存済みレースだけの集計です。公式の全国ランキングではありません。</div><div id="dashRacers"></div></div>
+<div class="card" id="performanceDashboard"><div class="title">📊 AI予想実績</div><div id="portalCloudPerformance" class="portal-cloud"><strong>自動分析 S勝負の成績</strong><div class="portal-empty">成績を読み込みます</div></div><div class="notice">上の自動分析はD1の予想実績です。以下は以前この端末に保存した履歴で、実際の舟券購入履歴とは限りません。</div><div class="dash-controls"><label>期間<select id="dashPeriod"><option value="30">直近30日</option><option value="7">直近7日</option><option value="all">全期間</option></select></label><label>買い目<select id="dashStyle"><option value="p6">本線6点</option><option value="p10">本線10点</option><option value="p15">本線15点</option><option value="hole">穴候補</option><option value="hit">🎯 的中特化型AI（6点）</option><option value="balance">⚖️ バランス型AI（6点）</option><option value="high">💥 一撃重視型AI（最大4点）</option></select></label></div><div id="dashSummary"></div><div class="title" style="margin-top:20px">レース別結果</div><div id="dashResults"></div><div class="title" style="margin-top:20px">保存済みレースの選手ランキング</div><div class="notice">結果を確認できた保存済みレースだけの集計です。公式の全国ランキングではありません。</div><div id="dashRacers"></div></div>
 <div class="card" id="allRaceResults"><div class="title">🚤 競艇・全レースの結果と払戻</div><div class="notice">BOAT RACE公式の競艇結果を、予想を保存していないレースも含めて表示します。日付と競艇場を選び、各レースの3連単（艇番）と払戻を確認できます。結果を見るだけでは予想履歴へ保存されません。</div><div class="all-result-controls"><label for="allResultDate">日付<input id="allResultDate" type="date"></label><label for="allResultVenue">開催場<select id="allResultVenue"><option value="">全開催場</option></select></label></div><div class="all-result-actions"><button type="button" id="loadResultVenues" class="secondary">競艇場を取得</button><button type="button" id="loadAllResults">競艇の結果を表示</button><button type="button" id="cancelAllResults" class="secondary" hidden>取得を中止</button></div><div id="allResultStatus" class="status" aria-live="polite">日付を選んで結果を表示してください。</div><div id="allResultList"></div></div>
 <div class="card" id="race-results"><div class="title">保存したレースの結果・払戻</div><button id="checkAllResults">結果を一括チェック</button><div id="autoCheckStatus" class="status"></div><div class="history-controls"><div class="history-filter-grid"><button class="filter-btn active" data-history-filter="all">すべて</button><button class="filter-btn" data-history-filter="battle">🔥 S勝負</button><button class="filter-btn" data-history-filter="pass">⚠️ S見送り</button><button class="filter-btn" data-history-filter="s">Sすべて</button><button class="filter-btn" data-history-filter="hit">🎯 本線的中</button><button class="filter-btn" data-history-filter="holehit">💥 穴的中</button><button class="filter-btn" data-history-filter="miss">× 本線不的中</button><button class="filter-btn" data-history-filter="learning">📚 学習用</button></div><div class="history-period-grid"><button class="filter-btn active" data-history-period="all">全期間</button><button class="filter-btn" data-history-period="today">今日</button><button class="filter-btn" data-history-period="yesterday">昨日</button></div><div id="historyCount" class="history-count"></div></div><div id="history"></div><button id="loadMoreHistory" class="secondary" style="display:none">さらに5件見る</button><button id="clearHistory" class="secondary">保存履歴を全削除</button></div>
 </section>
 <section class="portal-section" id="database"><div class="portal-section-heading"><span>05 / DATABASE</span><h2>選手の過去実績</h2><p>取り込んだ確定結果から過去30日の選手成績を集計します。公式の全国ランキングではありません。</p></div><div class="card portal-db"><label for="portalRacerSearch">選手名で探す</label><input id="portalRacerSearch" type="search" placeholder="選手名を入力"><div id="portalRacerStatus" class="status">過去の学習データを読み込みます</div><div id="portalRacerRanking"></div></div></section>
 <details class="portal-more" id="tools"><summary>詳細な分析・学習・設定を開く</summary>
-<div class="card"><div class="title">📚 全レース学習保存</div><div class="speed">選択した開催場の未終了レースをまとめて予想時点で保存します。S/A/Bすべて学習に使用し、実績の的中率・回収率には混ぜません。</div><button id="saveAllLearning" class="learn-save">📚 未終了レースを学習用に一括保存</button><div id="learningSaveStatus" class="status"></div><div class="notice">今日のレース専用です。終了済みレースは除外。オッズや展示がまだ取得できないレースは、後でもう一度押すと追加できます。</div></div>
 <div class="card"><div class="title">🎯 穴狙い実績</div><div id="holeComparison" class="compare"></div></div>
 <div class="card"><div class="title">🔥 S勝負だけの実績</div><div id="battleComparison" class="compare"></div></div>
 <div class="card"><div class="title">全評価 6点・10点・15点比較</div><div id="comparison" class="compare"></div></div>
@@ -975,7 +973,7 @@ function applyRacerHistoryScores(racers,stats,context) {
   });
 }
 
-function buildPrediction(racers,oddsData,context){const localLearned=calculateRoleLearnedWeights(context.date),learned=context.learned&&context.learned.races>=localLearned.races?context.learned:localLearned,history=learned===context.learned&&learned.racerHistory?learned.racerHistory:buildRacerHistoryStats(getTrainableHistory(context.date),context.date),modelRacers=applyRacerHistoryScores(racers.map(r=>{const components=scoreComponents(r,racers);return {...r,components,overallScore:overallScore(components,learned.overall),firstScore:roleScore(components,learned.roles.first,"first"),secondScore:roleScore(components,learned.roles.second,"second"),thirdScore:roleScore(components,learned.roles.third,"third")}}),history,context),overallRanking=modelRacers.slice().sort((a,b)=>b.overallScore-a.overallScore),confidence=getConfidence(modelRacers),allBets=evaluateBets(modelRacers,oddsData),strategy=selectMainlineBets(allBets,modelRacers,confidence),top15=strategy.bets,holeBets=selectHoleBets(allBets,top15),sDecision=makeSDecision(confidence,modelRacers,allBets),allBetRanking=allBets.map((b,i)=>({rank:i+1,combination:b.combination,totalScore:b.totalScore,probability:b.probability,odds:b.odds,ev:b.ev}));const snapshot={id:`${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,version:"6.6.11",createdAt:new Date().toISOString(),date:context.date,jcd:context.jcd,venue:context.venue,rno:Number(context.rno),confidence,sDecision,strategy:{type:strategy.type,label:strategy.label,reason:strategy.reason,firstShare:strategy.firstShare,firstGap:strategy.firstGap,secondStability:strategy.secondStability,thirdStability:strategy.thirdStability},evaluatedCount:allBets.length,learningRaces:learned.races,roleLearnedWeights:learned.roles,racersDetailed:modelRacers.map(r=>({lane:r.lane,name:r.name,registration:r.registration,class:r.class,historyRaces:r.historyRaces,historyWins:r.historyWins,historyTop3:r.historyTop3,historyAdjustment:r.historyAdjustment,components:{...r.components},overallScore:r.overallScore,firstScore:r.firstScore,secondScore:r.secondScore,thirdScore:r.thirdScore})),bets:top15.map(b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore,firstRole:b.firstRole,secondRole:b.secondRole,thirdRole:b.thirdRole})),holeBets,allBetRanking,weather:context.weather||null};return {learned,modelRacers,overallRanking,confidence,sDecision,allBets,top15,holeBets,strategy,snapshot,weather:context.weather||null}}
+function buildPrediction(racers,oddsData,context){const localLearned=calculateRoleLearnedWeights(context.date),learned=context.learned&&context.learned.races>=localLearned.races?context.learned:localLearned,history=learned===context.learned&&learned.racerHistory?learned.racerHistory:buildRacerHistoryStats(getTrainableHistory(context.date),context.date),modelRacers=applyRacerHistoryScores(racers.map(r=>{const components=scoreComponents(r,racers);return {...r,components,overallScore:overallScore(components,learned.overall),firstScore:roleScore(components,learned.roles.first,"first"),secondScore:roleScore(components,learned.roles.second,"second"),thirdScore:roleScore(components,learned.roles.third,"third")}}),history,context),overallRanking=modelRacers.slice().sort((a,b)=>b.overallScore-a.overallScore),confidence=getConfidence(modelRacers),allBets=evaluateBets(modelRacers,oddsData),strategy=selectMainlineBets(allBets,modelRacers,confidence),top15=strategy.bets,holeBets=selectHoleBets(allBets,top15),sDecision=makeSDecision(confidence,modelRacers,allBets),allBetRanking=allBets.map((b,i)=>({rank:i+1,combination:b.combination,totalScore:b.totalScore,probability:b.probability,odds:b.odds,ev:b.ev}));const manshu={probability:allBets.length===120?Math.min(1,Math.max(0,allBets.filter(b=>b.odds>=100).reduce((sum,b)=>sum+b.probability,0))):null,combinations:allBets.filter(b=>b.odds>=100).length,oddsCoverage:allBets.length,cutoffOdds:100};const snapshot={manshu,id:`${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,version:"6.6.11",createdAt:new Date().toISOString(),date:context.date,jcd:context.jcd,venue:context.venue,rno:Number(context.rno),confidence,sDecision,strategy:{type:strategy.type,label:strategy.label,reason:strategy.reason,firstShare:strategy.firstShare,firstGap:strategy.firstGap,secondStability:strategy.secondStability,thirdStability:strategy.thirdStability},evaluatedCount:allBets.length,learningRaces:learned.races,roleLearnedWeights:learned.roles,racersDetailed:modelRacers.map(r=>({lane:r.lane,name:r.name,registration:r.registration,class:r.class,historyRaces:r.historyRaces,historyWins:r.historyWins,historyTop3:r.historyTop3,historyAdjustment:r.historyAdjustment,components:{...r.components},overallScore:r.overallScore,firstScore:r.firstScore,secondScore:r.secondScore,thirdScore:r.thirdScore})),bets:top15.map(b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore,firstRole:b.firstRole,secondRole:b.secondRole,thirdRole:b.thirdRole})),holeBets,allBetRanking,weather:context.weather||null};return {learned,modelRacers,overallRanking,confidence,sDecision,allBets,top15,holeBets,strategy,snapshot,weather:context.weather||null}}
 
 function decisionHtml(d){if(!d||d.status==="NONE")return "";const m=d.metrics;return `<div class="decision ${d.status==="BET"?"battle":"pass"}"><div class="decision-title">${d.label}</div><div class="decision-score">S安定スコア：<strong>${d.score.toFixed(1)} / 100</strong></div><div class="quality-grid"><div class="quality">1着候補推定力<strong>${(m.firstShare*100).toFixed(1)}%</strong></div><div class="quality">上位6点確率<strong>${(m.top6Probability*100).toFixed(1)}%</strong></div><div class="quality">1着点差<strong>${m.firstGap.toFixed(1)}</strong></div><div class="quality">2着安定度<strong>${m.secondStability.toFixed(0)}</strong></div><div class="quality">3着安定度<strong>${m.thirdStability.toFixed(0)}</strong></div><div class="quality">展示データ<strong>${(m.beforeCoverage*100).toFixed(0)}%</strong></div></div><div class="notice" style="margin-top:9px">${d.reasons.join(" / ")}</div></div>`}
 
@@ -1015,7 +1013,7 @@ function oddsListHtml(p){
   return `<details class="race-diagnostic"><summary><strong>3連単オッズ一覧（${bets.length}通り）</strong></summary><div class="notice">予想時点で取得できたオッズ。締切まで変わります。欠損・0倍は表示しません。</div><div class="odds-list">${bets.map(b=>`<div><b>${b.combination}</b><span>${Number(b.odds).toFixed(1)}倍</span><small>推定 ${(b.probability*100).toFixed(2)}% / AI ${b.totalScore.toFixed(1)}</small></div>`).join('')}</div></details>`;
 }
 
-function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}${preRaceDiagnosticsHtml(p.modelRacers)}${beforeSummaryHtml(p)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><span style="text-align:right"><strong>${r.overallScore.toFixed(1)}</strong><small style="display:block;color:#94a3b8">過去30日 ${r.historyRaces||0}走 / 補正 ${(r.historyAdjustment||0)>=0?'+':''}${(r.historyAdjustment||0).toFixed(1)}</small></span></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}${oddsListHtml(p)}</div>`}
+function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価 / 万舟推定 ${p.snapshot.manshu?.probability==null?"算出待ち":(p.snapshot.manshu.probability*100).toFixed(1)+"%"}`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}${preRaceDiagnosticsHtml(p.modelRacers)}${beforeSummaryHtml(p)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><span style="text-align:right"><strong>${r.overallScore.toFixed(1)}</strong><small style="display:block;color:#94a3b8">過去30日 ${r.historyRaces||0}走 / 補正 ${(r.historyAdjustment||0)>=0?'+':''}${(r.historyAdjustment||0).toFixed(1)}</small></span></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}${oddsListHtml(p)}</div>`}
 
 function renderRacers(racers){racersBox.innerHTML="";const ranking=racers.slice().sort((a,b)=>b.overallScore-a.overallScore);for(const racer of ranking){const rank=ranking.findIndex(r=>r.lane===racer.lane)+1,row=document.createElement("div");row.className="racer";row.innerHTML=`<div class="topline"><div class="lane lane-${Number(racer.lane)}">${racer.lane}</div><div><div class="name">AI${rank}位 ${racer.name}</div><div class="meta">${racer.class} / ${racer.registration}｜過去30日 ${racer.historyRaces||0}走 ${racer.historyWins||0}勝・3着以内 ${racer.historyTop3||0}回｜履歴補正 ${(racer.historyAdjustment||0)>=0?"+":""}${(racer.historyAdjustment||0).toFixed(1)}</div></div><div class="score">${racer.overallScore.toFixed(1)}</div></div><div class="role-grid"><div class="role">1着適性<strong>${racer.firstScore.toFixed(1)}</strong></div><div class="role">2着適性<strong>${racer.secondScore.toFixed(1)}</strong></div><div class="role">3着適性<strong>${racer.thirdScore.toFixed(1)}</strong></div></div><div class="stats"><div class="stat">全国勝率：${fmt(racer.national?.winRate)}</div><div class="stat">当地勝率：${fmt(racer.local?.winRate)}</div><div class="stat">平均ST：${fmt(racer.avgST)}</div><div class="stat">モーター：${fmt(racer.motor?.secondRate)}%</div><div class="stat">展示：${fmt(racer.before?.exhibitionTime)}</div><div class="stat">展示ST：${fmt(racer.before?.exhibitionST)}</div></div>`;racersBox.appendChild(row)}}
 
@@ -1031,7 +1029,7 @@ async function getPredictionData(date,jcd,rno,venueName,force=false){const key=c
 
 async function scanSRaces(){const jcd=venueSelect.value;if(!jcd){$("sScanStatus").textContent="開催場を選択してください";return}if(!currentVenueRaces.length){$("sScanStatus").textContent="先にレース一覧を取得してください";return}const button=$("scanSRaces");button.disabled=true;currentSRaces=[];const date=apiDate(),venueName=venueSelect.options[venueSelect.selectedIndex]?.textContent?.split("（")[0]||jcd,start=performance.now();let battleCount=0,passCount=0,unavailable=0,finished=0;const results=await runPool(currentVenueRaces,SCAN_CONCURRENCY,async race=>{const rno=Number(race.rno);if(date===todayApi()){try{const result=await getCachedResult(date,jcd,rno);if(result.finished)return {finished:true,rno}}catch{}}const prediction=await getPredictionData(date,jcd,rno,venueName);return {rno,prediction}},(done,total)=>{$("sScanStatus").textContent=`高速分析中… ${done}/${total}R`});for(const row of results){if(!row||row.error){unavailable++;continue}if(row.finished){finished++;continue}if(!row.prediction){unavailable++;continue}if(row.prediction.confidence==="S"){currentSRaces.push({rno:row.rno,prediction:row.prediction});row.prediction.sDecision.status==="BET"?battleCount++:passCount++}}currentSRaces.sort((a,b)=>a.rno-b.rno);button.disabled=false;const seconds=((performance.now()-start)/1000).toFixed(1);$("sScanStatus").innerHTML=`高速分析完了：${seconds}秒<br>🔥 S勝負：${battleCount}R<br>⚠️ S見送り：${passCount}R<br>終了済み除外：${finished}R<br>データ未取得：${unavailable}R`;renderSRaces()}
 
-function renderSRaces(){let races=currentSRaces;if(sView==="battle")races=races.filter(x=>x.prediction.sDecision.status==="BET");if(sView==="pass")races=races.filter(x=>x.prediction.sDecision.status==="PASS");if(!races.length){sRaceList.innerHTML='<div class="status">該当するS評価レースはありません</div>';return}sRaceList.innerHTML=races.map(item=>{const idx=currentSRaces.indexOf(item),p=item.prediction,d=p.sDecision,top6=p.top15.slice(0,6).map(x=>x.combination).join(" / "),hole=p.holeBets?.map(x=>x.combination).join(" / ");return `<div class="s-race ${d.status==="BET"?"battle":"pass"}"><div class="s-head"><div class="s-title">${item.rno}R</div><div class="s-mark ${d.status==="BET"?"battle":"pass"}">${d.label}</div></div><div class="s-detail">展開判定：${p.strategy.label}<br>安定スコア：<strong>${d.score.toFixed(1)}</strong><br>本線上位6点：${top6}<br>🎯 穴：${hole||"候補なし"}</div><button onclick="openSRace(${idx})">詳しく見る（再通信なし）</button>${d.status==="PASS"?`<button class="secondary" onclick="savePassedSRace(${idx})">⚠️ このS見送りを保存</button>`:""}</div>`}).join("")}
+function renderSRaces(){let races=currentSRaces;if(sView==="battle")races=races.filter(x=>x.prediction.sDecision.status==="BET");if(sView==="pass")races=races.filter(x=>x.prediction.sDecision.status==="PASS");if(!races.length){sRaceList.innerHTML='<div class="status">該当するS評価レースはありません</div>';return}sRaceList.innerHTML=races.map(item=>{const idx=currentSRaces.indexOf(item),p=item.prediction,d=p.sDecision,top6=p.top15.slice(0,6).map(x=>x.combination).join(" / "),hole=p.holeBets?.map(x=>x.combination).join(" / ");return `<div class="s-race ${d.status==="BET"?"battle":"pass"}"><div class="s-head"><div class="s-title">${item.rno}R</div><div class="s-mark ${d.status==="BET"?"battle":"pass"}">${d.label}</div></div><div class="s-detail">展開判定：${p.strategy.label}<br>安定スコア：<strong>${d.score.toFixed(1)}</strong><br>本線上位6点：${top6}<br>🎯 穴：${hole||"候補なし"}</div><button onclick="openSRace(${idx})">詳しく見る（再通信なし）</button></div>`}).join("")}
 
 function openSRace(index){const item=currentSRaces[index];if(!item)return;$("raceTitle").textContent=`${item.rno}R ${item.prediction.sDecision.label}`;renderRacers(item.prediction.modelRacers);renderPredictionBuilt(item.prediction);$("racerStatus").textContent=`${item.prediction.sDecision.label} / キャッシュ表示`;window.scrollTo({top:racersBox.getBoundingClientRect().top+window.scrollY-20,behavior:"smooth"})}
 
@@ -2014,7 +2012,9 @@ function historyMatches(item){
 function compactResultText(item){
 
   const prefix=
-    item.saveMode==="s-pass-observation"
+    item.saveMode==="all-races-observation"
+      ?"🚤 全レース予想・購入なし / "
+    :item.saveMode==="s-pass-observation"
       ?"⚠️ S見送り・購入なし / "
     :item.learningOnly
       ?"📚 学習用 / "
@@ -2221,7 +2221,9 @@ function historyDetailHtml(item){
     <div class="history-meta">
 
       ${
-        item.saveMode==="s-pass-observation"
+        item.saveMode==="all-races-observation"
+          ?"🚤 全レース予想（観察用・購入なし・購入実績から除外）<br>"
+        :item.saveMode==="s-pass-observation"
           ?"⚠️ S見送り保存（購入なし・実績集計から除外）<br>"
         :item.learningOnly
           ?"📚 学習用保存（実績集計には含めない）<br>"
@@ -2321,7 +2323,9 @@ function renderHistory(){
           item.sDecision?.status;
 
         const badge=
-          item.saveMode==="s-pass-observation"
+          item.saveMode==="all-races-observation"
+            ?"🚤 全レース予想・購入なし"
+          :item.saveMode==="s-pass-observation"
             ?"⚠️ S見送り・購入なし"
           :item.learningOnly
             ?"📚 学習用"
@@ -2590,16 +2594,16 @@ $("loadRaces").onclick=
 $("scanSRaces").onclick=
   scanSRaces;
 
-$("saveAllS").onclick=
-  saveAllSRaces;
-$("saveAllSPass").onclick=
-  saveAllPassedSRaces;
+$("saveAllS")?.addEventListener("click",
+  saveAllSRaces);
+$("saveAllSPass")?.addEventListener("click",
+  saveAllPassedSRaces);
 
-$("saveAllLearning").onclick=
-  saveAllLearningRaces;
+$("saveAllLearning")?.addEventListener("click",
+  saveAllLearningRaces);
 
-$("savePrediction").onclick=
-  saveCurrentPrediction;
+$("savePrediction")?.addEventListener("click",
+  saveCurrentPrediction);
 
 $("checkAllResults").onclick=
   ()=>checkAllResults(false);
@@ -2898,6 +2902,7 @@ if(
 
   v6612PastCard.className=
     "card";
+  v6612PastCard.hidden = true;
 
   v6612PastCard.innerHTML=`
     <div class="title">
@@ -5417,7 +5422,7 @@ renderHistory();
       const picks=p.purposePicks[key]||[];
       if(!p.snapshot.purposeAllocations[key]){
         if(saved){
-          const recorded=saved.saveMode==='s-pass-observation'?0:Number(saved.betUnit||100);
+          const recorded=['s-pass-observation','all-races-observation'].includes(saved.saveMode)?0:Number(saved.betUnit||100);
           p.snapshot.purposeAllocations[key]=saved.purposeAllocations?.[key]
             ?{...saved.purposeAllocations[key]}
             :Object.fromEntries(picks.map(b=>[b.combination,recorded]));
@@ -5449,7 +5454,7 @@ renderHistory();
       const rows=picks.map(b=>{const stakeForBet=Number(alloc[b.combination]||0);return `<tr class="${hit&&b.combination===winner?'is-hit':''}"><td>${hit&&b.combination===winner?'<span class="purpose-hit">🎯</span>':''}${lanes(b.combination)}</td><td>${b.odds.toFixed(1)}倍</td><td><input type="number" min="0" max="1000000" step="100" inputmode="numeric" aria-label="${name} ${b.combination} 購入額（円）" data-purpose-amount data-mode="${key}" data-combination="${b.combination}" value="${stakeForBet}" ${saved?'disabled':''}></td><td>${money(Math.round(b.odds*stakeForBet))}</td><td>${(b.probability*100).toFixed(2)}%</td></tr>`}).join('');
       return `<details class="purpose-mode ${key}" ${idx===0?'open':''}><summary><span class="purpose-icon">${icon}</span><span>${name}</span><span class="purpose-arrow" aria-hidden="true">⌄</span></summary><div class="purpose-body"><div class="purpose-metrics"><span>予想上の的中確率 <b>${(chance*100).toFixed(1)}%</b></span><span>配分別の推定回収率 <b>${estimatedRoi}%</b></span></div><div class="purpose-stake">${reason}</div>${picks.length?`<div class="purpose-budget"><label for="purpose-budget-${key}">この予想の予算</label><input id="purpose-budget-${key}" type="number" min="0" max="1000000" step="100" inputmode="numeric" data-purpose-budget data-mode="${key}" value="${p.snapshot.purposeBudgets[key]}" ${saved?'disabled':''}><button type="button" data-purpose-auto="${key}" ${saved?'disabled':''}>予算を自動設定</button></div><div class="purpose-stake">配分合計 <b>${money(stake)}</b>（${picks.filter(b=>alloc[b.combination]>0).length}通り）。各買い目の金額も変更できます。</div>`:''}${hitBanner}${mark}${picks.length?`<div class="purpose-table-wrap" tabindex="0" aria-label="${name}の買い目。横にスクロールできます"><table class="purpose-table"><thead><tr><th>3連単</th><th>オッズ</th><th>購入額</th><th>想定払戻</th><th>推定確率</th></tr></thead><tbody>${rows}</tbody></table></div><div class="purpose-table-note">横にスクロールすると全項目が見られます。想定払戻＝表示オッズ×その買い目の配分額。0円の買い目は収支から除外します。</div>`:'<div class="purpose-stake">今回は条件に合う買い目がないため見送りです。</div>'}</div></details>`;
     }).join('');
-    return `<div class="purpose-box"><strong>AI予想を目的別に見る</strong><div class="notice">自動予算はレースごとの上限額から計算します。3種類は別々の購入案で、合計して買う金額ではありません。S見送りの自動予算は0円です。</div><div class="purpose-budget"><label for="purpose-race-cap">自動予算の上限（1レース）</label><input id="purpose-race-cap" type="number" min="0" max="1000000" step="100" inputmode="numeric" data-purpose-cap value="${p.snapshot.purposeAutoCap}" ${saved?'disabled':''}><button type="button" data-purpose-auto-all ${saved?'disabled':''}>3種類の予算を自動設定</button></div><div class="notice">上限を変更すると3種類とも再計算します。予算・買い目の金額は100円単位で編集でき、手動入力では上限を超えることもできます。保存前に配分を決めてください。${saved?' この予想は保存済みのため配分を固定しています。':''}</div>${sections}<div class="notice">3種類は共通モデルからの選別です。予想上の的中確率と推定回収率は予測値です。各モードの収支は購入した場合の試算で、実際の投票記録ではありません。</div></div>`;
+    return `<div class="purpose-box"><strong>AI予想を目的別に見る</strong><div class="notice">自動予算はレースごとの上限額から計算します。3種類は別々の購入案で、合計して買う金額ではありません。S見送りの自動予算は0円です。</div><div class="purpose-budget"><label for="purpose-race-cap">自動予算の上限（1レース）</label><input id="purpose-race-cap" type="number" min="0" max="1000000" step="100" inputmode="numeric" data-purpose-cap value="${p.snapshot.purposeAutoCap}" ${saved?'disabled':''}><button type="button" data-purpose-auto-all ${saved?'disabled':''}>3種類の予算を自動設定</button></div><div class="notice">上限を変更すると3種類とも再計算します。予算・買い目の金額は100円単位で編集でき、手動入力では上限を超えることもできます。予算の配分は試算用です。全レースの予想は自動で保存されます。${saved?' この予想は保存済みのため配分を固定しています。':''}</div>${sections}<div class="notice">3種類は共通モデルからの選別です。予想上の的中確率と推定回収率は予測値です。各モードの収支は購入した場合の試算で、実際の投票記録ではありません。</div></div>`;
   }
   function updatePurpose(p){
     const old=predictionBox.querySelector('.purpose-box');
@@ -5712,7 +5717,7 @@ renderHistory();
   dateField.value=dateInput.value||todayLocal();dateField.max=todayLocal();
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const key=(day,jcd,rno)=>`${day}/${jcd}/${rno}`;
-  const savedRaces=()=>new Set(getHistory().filter(x=>!x.learningOnly).map(x=>key(x.date,String(x.jcd).padStart(2,'0'),Number(x.rno))));
+  const savedRaces=()=>new Set(getHistory().filter(x=>!x.learningOnly||x.saveMode==='all-races-observation').map(x=>key(x.date,String(x.jcd).padStart(2,'0'),Number(x.rno))));
   function render(groups,day){
     const saved=savedRaces();let completed=0,pending=0,failed=0;
     list.innerHTML=groups.map((g,index)=>{
@@ -5786,6 +5791,42 @@ renderHistory();
   load.addEventListener('click',loadResults);
   cancel.addEventListener('click',()=>{runId++;load.disabled=false;cancel.hidden=true;status.textContent='取得を中止しました。表示済みの結果は残しています。'});
   dateField.addEventListener('change',()=>{runId++;load.disabled=false;cancel.hidden=true;venueField.innerHTML='<option value="">全開催場</option>';list.innerHTML='';status.textContent='この日付の結果を表示するには取得ボタンを押してください。'});
+})();
+</script>
+<style>
+.bulk-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:12px 0}.bulk-controls label{min-width:170px;flex:1;color:#313a54;font-weight:700}.bulk-controls select{margin:5px 0 0}.bulk-controls button{width:auto;min-width:170px;margin:0;flex:1}.bulk-controls button[hidden]{display:none}
+@media(max-width:600px){.bulk-controls{display:grid;grid-template-columns:1fr}.bulk-controls button{width:100%}}
+</style>
+
+<style>
+[hidden], .card[hidden] {display:none!important}
+.auto-overview{background:#fff;color:#202537}
+.auto-overview .notice,.auto-overview .status{color:#475569}
+.auto-pred-row{padding:11px 12px;margin:8px 0;border:1px solid #dee5f1;border-radius:12px;background:#f8fafc;color:#172033;line-height:1.7}
+.auto-pred-row strong{color:#172033}
+.auto-pred-row small{display:block;color:#475569}
+.auto-pred-row .badge{padding:3px 8px;background:#ede9fe;color:#513398;border-radius:9px;font-size:12px;font-weight:700}
+</style>
+<script>
+(function(){
+ const status=document.getElementById('autoPredictionsStatus');
+ const list=document.getElementById('autoPredictionsList');
+ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ async function load(){
+  const date=apiDate();
+  try{
+   const data=await getJSON('/api/today-predictions?date='+encodeURIComponent(date));
+   if(apiDate()!==date)return;
+   status.textContent=`${data.count}R 保存済み / 万舟通知の目安 ${data.manshuThresholdPercent}%以上。出走・直前・オッズが未取得のレースは締切前に再試行します。`;
+   list.innerHTML=data.predictions.map(p=>{
+    const m=p.manshuProbability==null?'算出待ち':(Number(p.manshuProbability)*100).toFixed(1)+'%';
+    const kind=p.confidence==='S'?(p.decision==='PASS'?'⚠️ S見送り':'🔥 S勝負'):p.manshuProbability!=null&&p.manshuProbability*100>=data.manshuThresholdPercent?'💥 万舟高確率':`${p.confidence||'-'}評価`;
+    return `<div class="auto-pred-row"><strong>${esc(p.venue)} ${esc(p.rno)}R</strong> <span class="badge">${esc(kind)}</span><small>締切 ${esc(p.deadline||'-')} / 万舟推定 ${esc(m)} / 本線6点 ${esc((p.main6||[]).join('・')||'-')}</small></div>`;
+   }).join('')||'<p>予想データの到着を待っています。</p>';
+  }catch(e){status.textContent='予想一覧を取得できません：'+e.message}
+ }
+ dateInput.addEventListener('change',load);
+ load();setInterval(load,60000);
 })();
 </script>
 </body>
