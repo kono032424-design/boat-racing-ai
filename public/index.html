@@ -837,7 +837,64 @@ function holeTier(odds){return odds>=80?{key:"big",label:"💥 大穴"}:odds>=40
 
 function selectHoleBets(allBets,mainline){const mainSet=new Set(mainline.map(x=>x.combination));let c=allBets.map((bet,index)=>({...bet,aiRank:index+1})).filter(b=>!mainSet.has(b.combination)&&b.odds>=20&&b.probability>=.003&&b.ev>=.60&&b.totalScore>=30);if(c.length<3)c=allBets.map((bet,index)=>({...bet,aiRank:index+1})).filter(b=>!mainSet.has(b.combination)&&b.odds>=18&&b.probability>=.002&&b.ev>=.45&&b.totalScore>=27);for(const b of c){const probabilityScore=norm(b.probability,.002,.025),evScore=norm(Math.min(b.ev,2),.45,1.5),aiScore=norm(b.totalScore,27,80),oddsScore=norm(Math.log(Math.max(b.odds,1)),Math.log(18),Math.log(120)),rankScore=1-norm(b.aiRank,16,80);b.holeScore=Math.round((probabilityScore*.25+evScore*.30+aiScore*.20+oddsScore*.15+rankScore*.10)*1000)/10;b.tier=holeTier(b.odds)}c.sort((a,b)=>b.holeScore-a.holeScore);const selected=[],tierCount={middle:0,hole:0,big:0},firstCount={};for(const b of c){if(selected.length>=5)break;if((firstCount[b.first]||0)>=2)continue;if(b.tier.key==="middle"&&tierCount.middle>=2)continue;if(b.tier.key==="hole"&&tierCount.hole>=2)continue;if(b.tier.key==="big"&&tierCount.big>=1)continue;selected.push(b);tierCount[b.tier.key]++;firstCount[b.first]=(firstCount[b.first]||0)+1}for(const b of c){if(selected.length>=3)break;if(!selected.some(x=>x.combination===b.combination))selected.push(b)}return selected.slice(0,5).map(b=>({combination:b.combination,aiRank:b.aiRank,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore,holeScore:b.holeScore,tier:b.tier,first:b.first,second:b.second,third:b.third}))}
 
-function buildPrediction(racers,oddsData,context){const localLearned=calculateRoleLearnedWeights(context.date),learned=context.learned&&context.learned.races>=localLearned.races?context.learned:localLearned,modelRacers=racers.map(r=>{const components=scoreComponents(r,racers);return {...r,components,overallScore:overallScore(components,learned.overall),firstScore:roleScore(components,learned.roles.first,"first"),secondScore:roleScore(components,learned.roles.second,"second"),thirdScore:roleScore(components,learned.roles.third,"third")}}),overallRanking=modelRacers.slice().sort((a,b)=>b.overallScore-a.overallScore),confidence=getConfidence(modelRacers),allBets=evaluateBets(modelRacers,oddsData),strategy=selectMainlineBets(allBets,modelRacers,confidence),top15=strategy.bets,holeBets=selectHoleBets(allBets,top15),sDecision=makeSDecision(confidence,modelRacers,allBets),allBetRanking=allBets.map((b,i)=>({rank:i+1,combination:b.combination,totalScore:b.totalScore,probability:b.probability,odds:b.odds,ev:b.ev}));const snapshot={id:`${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,version:"6.6.11",createdAt:new Date().toISOString(),date:context.date,jcd:context.jcd,venue:context.venue,rno:Number(context.rno),confidence,sDecision,strategy:{type:strategy.type,label:strategy.label,reason:strategy.reason,firstShare:strategy.firstShare,firstGap:strategy.firstGap,secondStability:strategy.secondStability,thirdStability:strategy.thirdStability},evaluatedCount:allBets.length,learningRaces:learned.races,roleLearnedWeights:learned.roles,racersDetailed:modelRacers.map(r=>({lane:r.lane,name:r.name,class:r.class,components:{...r.components},overallScore:r.overallScore,firstScore:r.firstScore,secondScore:r.secondScore,thirdScore:r.thirdScore})),bets:top15.map(b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore,firstRole:b.firstRole,secondRole:b.secondRole,thirdRole:b.thirdRole})),holeBets,allBetRanking,weather:context.weather||null};return {learned,modelRacers,overallRanking,confidence,sDecision,allBets,top15,holeBets,strategy,snapshot,weather:context.weather||null}}
+/* 予想日の前30日だけを使用し、艇番による基礎勝率との差を小さく加点する。 */
+function racerHistoryName(value) {
+  return String(value||'').replace(/[\s\u3000]/g,'').trim();
+}
+
+function buildRacerHistoryStats(history,asOfDate) {
+  const byId=Object.create(null),byName=Object.create(null);
+  const day=String(asOfDate||'');
+  const time=Date.UTC(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8)));
+  const cutoff=Number.isFinite(time)?new Date(time-30*86400000).toISOString().slice(0,10).replaceAll('-',''):'00000000';
+  const firstBase={1:.50,2:.15,3:.12,4:.10,5:.07,6:.06};
+  const topBase={1:.80,2:.55,3:.49,4:.44,5:.39,6:.33};
+  const add=(store,key,row,venue,win,top,baseWin,baseTop)=>{
+    if(!key)return;
+    const value=store[key]||(store[key]={starts:0,wins:0,top3:0,expectedWins:0,expectedTop3:0,venue:{}});
+    value.starts++;value.wins+=Number(win);value.top3+=Number(top);
+    value.expectedWins+=baseWin;value.expectedTop3+=baseTop;
+    if(venue){const part=value.venue[venue]||(value.venue[venue]={starts:0,wins:0,expectedWins:0});
+      part.starts++;part.wins+=Number(win);part.expectedWins+=baseWin}
+  };
+  for(const item of history||[]){
+    const date=String(item.date||'');
+    if(date>=day||date<cutoff||!item.result?.finished)continue;
+    const podium=item.result.winningLanes?.slice(0,3).map(Number);
+    if(!podium||podium.length!==3||new Set(podium).size!==3)continue;
+    for(const r of item.racersDetailed||[]){
+      const lane=Number(r.lane),name=racerHistoryName(r.name),id=String(r.registration||'');
+      if(!firstBase[lane]||!name)continue;
+      const win=lane===podium[0],top=podium.includes(lane),venue=String(item.jcd||'').padStart(2,'0');
+      add(byName,name,r,venue,win,top,firstBase[lane],topBase[lane]);
+      if(/^\d{4}$/.test(id))add(byId,id,r,venue,win,top,firstBase[lane],topBase[lane]);
+    }
+  }
+  return {byId,byName};
+}
+
+function applyRacerHistoryScores(racers,stats,context) {
+  return racers.map(r=>{
+    const id=String(r.registration||''),name=racerHistoryName(r.name);
+    const byId=stats?.byId?.[id],byName=stats?.byName?.[name];
+    const record=byId?.starts>=2?byId:(byName||byId);
+    if(!record?.starts)return {...r,historyRaces:0,historyWins:0,historyTop3:0,historyAdjustment:0};
+    const n=record.starts;
+    const winSignal=(record.wins-record.expectedWins)/(n+8);
+    const topSignal=(record.top3-record.expectedTop3)/(n+8);
+    const venueRecord=record.venue?.[String(context.jcd||'').padStart(2,'0')];
+    const venueSignal=venueRecord?(venueRecord.wins-venueRecord.expectedWins)/(venueRecord.starts+10):0;
+    const sampleFactor=Math.min(1,n/5);
+    const adjustment=Math.round(Math.max(-6,Math.min(6,(40*winSignal+12*topSignal+12*venueSignal)*sampleFactor))*10)/10;
+    return {...r,overallScore:Math.round((r.overallScore+adjustment)*10)/10,
+      firstScore:Math.round((r.firstScore+adjustment*1.2)*10)/10,
+      secondScore:Math.round((r.secondScore+adjustment*.65)*10)/10,
+      thirdScore:Math.round((r.thirdScore+adjustment*.45)*10)/10,
+      historyRaces:n,historyWins:record.wins,historyTop3:record.top3,historyAdjustment:adjustment};
+  });
+}
+
+function buildPrediction(racers,oddsData,context){const localLearned=calculateRoleLearnedWeights(context.date),learned=context.learned&&context.learned.races>=localLearned.races?context.learned:localLearned,history=learned===context.learned&&learned.racerHistory?learned.racerHistory:buildRacerHistoryStats(getTrainableHistory(context.date),context.date),modelRacers=applyRacerHistoryScores(racers.map(r=>{const components=scoreComponents(r,racers);return {...r,components,overallScore:overallScore(components,learned.overall),firstScore:roleScore(components,learned.roles.first,"first"),secondScore:roleScore(components,learned.roles.second,"second"),thirdScore:roleScore(components,learned.roles.third,"third")}}),history,context),overallRanking=modelRacers.slice().sort((a,b)=>b.overallScore-a.overallScore),confidence=getConfidence(modelRacers),allBets=evaluateBets(modelRacers,oddsData),strategy=selectMainlineBets(allBets,modelRacers,confidence),top15=strategy.bets,holeBets=selectHoleBets(allBets,top15),sDecision=makeSDecision(confidence,modelRacers,allBets),allBetRanking=allBets.map((b,i)=>({rank:i+1,combination:b.combination,totalScore:b.totalScore,probability:b.probability,odds:b.odds,ev:b.ev}));const snapshot={id:`${context.date}-${context.jcd}-${context.rno}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,version:"6.6.11",createdAt:new Date().toISOString(),date:context.date,jcd:context.jcd,venue:context.venue,rno:Number(context.rno),confidence,sDecision,strategy:{type:strategy.type,label:strategy.label,reason:strategy.reason,firstShare:strategy.firstShare,firstGap:strategy.firstGap,secondStability:strategy.secondStability,thirdStability:strategy.thirdStability},evaluatedCount:allBets.length,learningRaces:learned.races,roleLearnedWeights:learned.roles,racersDetailed:modelRacers.map(r=>({lane:r.lane,name:r.name,registration:r.registration,class:r.class,historyRaces:r.historyRaces,historyWins:r.historyWins,historyTop3:r.historyTop3,historyAdjustment:r.historyAdjustment,components:{...r.components},overallScore:r.overallScore,firstScore:r.firstScore,secondScore:r.secondScore,thirdScore:r.thirdScore})),bets:top15.map(b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore,firstRole:b.firstRole,secondRole:b.secondRole,thirdRole:b.thirdRole})),holeBets,allBetRanking,weather:context.weather||null};return {learned,modelRacers,overallRanking,confidence,sDecision,allBets,top15,holeBets,strategy,snapshot,weather:context.weather||null}}
 
 function decisionHtml(d){if(!d||d.status==="NONE")return "";const m=d.metrics;return `<div class="decision ${d.status==="BET"?"battle":"pass"}"><div class="decision-title">${d.label}</div><div class="decision-score">S安定スコア：<strong>${d.score.toFixed(1)} / 100</strong></div><div class="quality-grid"><div class="quality">1着候補推定力<strong>${(m.firstShare*100).toFixed(1)}%</strong></div><div class="quality">上位6点確率<strong>${(m.top6Probability*100).toFixed(1)}%</strong></div><div class="quality">1着点差<strong>${m.firstGap.toFixed(1)}</strong></div><div class="quality">2着安定度<strong>${m.secondStability.toFixed(0)}</strong></div><div class="quality">3着安定度<strong>${m.thirdStability.toFixed(0)}</strong></div><div class="quality">展示データ<strong>${(m.beforeCoverage*100).toFixed(0)}%</strong></div></div><div class="notice" style="margin-top:9px">${d.reasons.join(" / ")}</div></div>`}
 
@@ -877,9 +934,9 @@ function oddsListHtml(p){
   return `<details class="race-diagnostic"><summary><strong>3連単オッズ一覧（${bets.length}通り）</strong></summary><div class="notice">予想時点で取得できたオッズ。締切まで変わります。欠損・0倍は表示しません。</div><div class="odds-list">${bets.map(b=>`<div><b>${b.combination}</b><span>${Number(b.odds).toFixed(1)}倍</span><small>推定 ${(b.probability*100).toFixed(2)}% / AI ${b.totalScore.toFixed(1)}</small></div>`).join('')}</div></details>`;
 }
 
-function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}${preRaceDiagnosticsHtml(p.modelRacers)}${beforeSummaryHtml(p)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><strong>${r.overallScore.toFixed(1)}</strong></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}${oddsListHtml(p)}</div>`}
+function renderPredictionBuilt(p){currentSnapshot=p.snapshot;$("predictionStatus").textContent=`勝負度 ${p.confidence} / ${p.allBets.length}通り評価`;predictionBox.innerHTML=`<div class="prediction"><div>勝負度：<span class="confidence ${p.confidence==="S"?"s":""}">${p.confidence}</span></div>${decisionHtml(p.sDecision)}${preRaceDiagnosticsHtml(p.modelRacers)}${beforeSummaryHtml(p)}<div class="adjust"><strong>本線は3連単のAI総合順位</strong><br>1・2・3着の評価、推定確率、オッズから順位付け。1着候補は固定しません。</div><div class="strategy"><strong>展開判定：${p.strategy.label}</strong><br>${p.strategy.reason}<br>1着優位 ${(p.strategy.firstShare*100).toFixed(1)}% / 1着点差 ${p.strategy.firstGap.toFixed(1)} / 2着安定 ${p.strategy.secondStability.toFixed(0)} / 3着安定 ${p.strategy.thirdStability.toFixed(0)}</div><div style="font-weight:900;margin:12px 0 6px">総合艇ランキング</div>${p.overallRanking.map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #334155"><span>AI${i+1}位 ${r.lane}号艇 ${r.name}</span><span style="text-align:right"><strong>${r.overallScore.toFixed(1)}</strong><small style="display:block;color:#94a3b8">過去30日 ${r.historyRaces||0}走 / 補正 ${(r.historyAdjustment||0)>=0?'+':''}${(r.historyAdjustment||0).toFixed(1)}</small></span></div>`).join("")}<div style="font-weight:900;margin:15px 0 6px">本線 3連単 上位15点</div>${p.top15.map((b,i)=>`<div class="bet-card ${i<6?"top6":i<10?"top10":""}"><div class="bet-top"><div><div class="notice">本線第${i+1}位</div><div class="combo">${b.combination}</div></div><div class="total-score">${b.totalScore.toFixed(1)}</div></div><div class="bet-grid"><div class="bet-item">推定確率<strong>${(b.probability*100).toFixed(2)}%</strong></div><div class="bet-item">オッズ<strong>${b.odds.toFixed(1)}</strong></div><div class="bet-item">EV<strong>${b.ev.toFixed(2)}</strong></div><div class="bet-item">AI総合<strong>${b.totalScore.toFixed(1)}</strong></div></div></div>`).join("")}${holeBetsHtml(p.holeBets)}${oddsListHtml(p)}</div>`}
 
-function renderRacers(racers){racersBox.innerHTML="";const ranking=racers.slice().sort((a,b)=>b.overallScore-a.overallScore);for(const racer of ranking){const rank=ranking.findIndex(r=>r.lane===racer.lane)+1,row=document.createElement("div");row.className="racer";row.innerHTML=`<div class="topline"><div class="lane">${racer.lane}</div><div><div class="name">AI${rank}位 ${racer.name}</div><div class="meta">${racer.class} / ${racer.registration}</div></div><div class="score">${racer.overallScore.toFixed(1)}</div></div><div class="role-grid"><div class="role">1着適性<strong>${racer.firstScore.toFixed(1)}</strong></div><div class="role">2着適性<strong>${racer.secondScore.toFixed(1)}</strong></div><div class="role">3着適性<strong>${racer.thirdScore.toFixed(1)}</strong></div></div><div class="stats"><div class="stat">全国勝率：${fmt(racer.national?.winRate)}</div><div class="stat">当地勝率：${fmt(racer.local?.winRate)}</div><div class="stat">平均ST：${fmt(racer.avgST)}</div><div class="stat">モーター：${fmt(racer.motor?.secondRate)}%</div><div class="stat">展示：${fmt(racer.before?.exhibitionTime)}</div><div class="stat">展示ST：${fmt(racer.before?.exhibitionST)}</div></div>`;racersBox.appendChild(row)}}
+function renderRacers(racers){racersBox.innerHTML="";const ranking=racers.slice().sort((a,b)=>b.overallScore-a.overallScore);for(const racer of ranking){const rank=ranking.findIndex(r=>r.lane===racer.lane)+1,row=document.createElement("div");row.className="racer";row.innerHTML=`<div class="topline"><div class="lane">${racer.lane}</div><div><div class="name">AI${rank}位 ${racer.name}</div><div class="meta">${racer.class} / ${racer.registration}｜過去30日 ${racer.historyRaces||0}走 ${racer.historyWins||0}勝・3着以内 ${racer.historyTop3||0}回｜履歴補正 ${(racer.historyAdjustment||0)>=0?"+":""}${(racer.historyAdjustment||0).toFixed(1)}</div></div><div class="score">${racer.overallScore.toFixed(1)}</div></div><div class="role-grid"><div class="role">1着適性<strong>${racer.firstScore.toFixed(1)}</strong></div><div class="role">2着適性<strong>${racer.secondScore.toFixed(1)}</strong></div><div class="role">3着適性<strong>${racer.thirdScore.toFixed(1)}</strong></div></div><div class="stats"><div class="stat">全国勝率：${fmt(racer.national?.winRate)}</div><div class="stat">当地勝率：${fmt(racer.local?.winRate)}</div><div class="stat">平均ST：${fmt(racer.avgST)}</div><div class="stat">モーター：${fmt(racer.motor?.secondRate)}%</div><div class="stat">展示：${fmt(racer.before?.exhibitionTime)}</div><div class="stat">展示ST：${fmt(racer.before?.exhibitionST)}</div></div>`;racersBox.appendChild(row)}}
 
 const d1LearnedCache=new Map();
 async function getD1Learned(date){
@@ -3002,7 +3059,7 @@ function buildHistoricalLearningItem(
           lane:r.lane,
 
           name:r.name,
-
+          registration:r.registration,
           class:r.class,
 
           components:{
@@ -5226,7 +5283,7 @@ renderHistory();
     const p=baseline(...args);
     p.purposePicks=purposeSelections(p);
     p.snapshot.purposePicks=p.purposePicks;
-    p.snapshot.version='6.6.19';
+    p.snapshot.version='6.6.21';
     return p;
   };
   function purposeHtml(p){
@@ -5265,17 +5322,17 @@ renderHistory();
     }
     return result;
   };
-  alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.19'&&!item.learningOnly)};
-  alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.19')};
+  alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21'&&!item.learningOnly)};
+  alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21')};
   const h=document.querySelector('h1'),v=document.querySelector('.version');
-  if(h)h.textContent='競艇AI V6.6.19';
-  if(v)v.textContent='Boat Racing AI V6.6.19';
+  if(h)h.textContent='競艇AI V6.6.21';
+  if(v)v.textContent='Boat Racing AI V6.6.21';
 })();
 </script>
 
 <script>
 (function(){
-  document.title='競艇AI V6.6.19';
+  document.title='競艇AI V6.6.21';
   const card=document.getElementById('importPastLearning')?.closest('.card');
   if(!card)return;
   const info=document.createElement('div');
@@ -5288,7 +5345,7 @@ renderHistory();
     try{
       const data=await getJSON('/api/backfill-status');
       const state=data.state;
-      info.textContent=`自動取り込み：過去30日 / D1取り込み済み ${data.imported}R / ${state?.priority_date||state?.cursor_date||'補完完了'} ${state?`${(state.priority_date?state.priority_venue_index:state.venue_index)+1}会場目`:'（開始待ち）'}`;
+      info.textContent=`自動取り込み：過去30日 / 結果 ${data.results}R / 学習可能 ${data.learning}R / ${state?.priority_date||state?.cursor_date||'補完完了'} ${state?`${(state.priority_date?state.priority_venue_index:state.venue_index)+1}会場目`:'（開始待ち）'}`;
     }catch{info.textContent='自動取り込みの状況を取得できません。Workerの更新後に確認してください。'}
   }
   update();setInterval(update,300000);
