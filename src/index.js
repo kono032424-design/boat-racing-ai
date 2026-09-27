@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.21";
+const WORKER_VERSION = "6.6.22";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
@@ -13593,6 +13593,17 @@ async function listSBetPredictions(
 function blankPerformanceBucket() {
   return {
     races:0,
+    // All predicted races are hypothetical purchases. S勝負 is the actionable subset.
+    main6Stake:0,
+    main6Return:0,
+    main10Stake:0,
+    main10Return:0,
+    sBetMain6Stake:0,
+    sBetMain6Return:0,
+    sBetMain10Stake:0,
+    sBetMain10Return:0,
+    missingPayoutRaces:0,
+    sBetMissingPayoutRaces:0,
     main6Hits:0,
     main10Hits:0,
     main15Hits:0,
@@ -13635,6 +13646,14 @@ function finalizePerformanceBucket(
 ) {
   return {
     ...bucket,
+    main6Profit:bucket.main6Return - bucket.main6Stake,
+    main6RecoveryRate:bucket.main6Stake > 0 ? bucket.main6Return / bucket.main6Stake * 100 : null,
+    main10Profit:bucket.main10Return - bucket.main10Stake,
+    main10RecoveryRate:bucket.main10Stake > 0 ? bucket.main10Return / bucket.main10Stake * 100 : null,
+    sBetMain6Profit:bucket.sBetMain6Return - bucket.sBetMain6Stake,
+    sBetMain6RecoveryRate:bucket.sBetMain6Stake > 0 ? bucket.sBetMain6Return / bucket.sBetMain6Stake * 100 : null,
+    sBetMain10Profit:bucket.sBetMain10Return - bucket.sBetMain10Stake,
+    sBetMain10RecoveryRate:bucket.sBetMain10Stake > 0 ? bucket.sBetMain10Return / bucket.sBetMain10Stake * 100 : null,
 
     main6HitRate:
       performanceRate(
@@ -13861,6 +13880,27 @@ function addPerformanceResult(
       0
     ) >= 80;
 
+  // Official trifecta payouts are quoted for a 100-yen ticket.
+  // Exclude races without a payout from monetary totals, while keeping their hit records.
+  const payout = Number(result?.payout ?? result?.payoutPer100);
+  if (Number.isFinite(payout) && payout > 0) {
+    const stake6 = main6.length * 100;
+    const stake10 = main10.length * 100;
+    bucket.main6Stake += stake6;
+    bucket.main10Stake += stake10;
+    if (main6Hit) bucket.main6Return += payout;
+    if (main10Hit) bucket.main10Return += payout;
+    if (isSBet) {
+      bucket.sBetMain6Stake += stake6;
+      bucket.sBetMain10Stake += stake10;
+      if (main6Hit) bucket.sBetMain6Return += payout;
+      if (main10Hit) bucket.sBetMain10Return += payout;
+    }
+  } else {
+    bucket.missingPayoutRaces++;
+    if (isSBet) bucket.sBetMissingPayoutRaces++;
+  }
+
   bucket.races++;
 
   if (main6Hit) {
@@ -14082,7 +14122,7 @@ async function performanceOverview(env) {
     skippedWithoutPrediction:
       skipped,
     note:
-      "回収率は購入金額データを自動予想に保存していないため集計対象外です"
+      "収支は1点100円で予想の買い目を購入した場合の試算です。実購入履歴ではありません。S見送りは購入額・払戻額ともに0円です。"
   };
 }
 
@@ -14152,6 +14192,11 @@ function sPicksDashboardHtml() {
   .perfRow b{color:var(--ink);text-align:right}
   .perfRow.passRow span{color:var(--pass)}
   .perfRow.holeRow span{color:var(--warn)}
+  .perfMoney{margin-top:11px;padding:9px;background:#f7f4fc;border-radius:11px;font-size:12px;line-height:1.6}
+  .perfMoney strong{display:block;margin-bottom:3px}
+  .perfMoney .loss{color:#b4364c}
+  .perfMoney .gain{color:#15804c}
+  .perfMoney .zero{color:var(--muted)}
   .perfNote{grid-column:1/-1;font-size:11px;color:var(--muted);padding:0 2px}
   .grid{display:grid;gap:14px}
   .card{
@@ -14185,6 +14230,7 @@ function sPicksDashboardHtml() {
   .result.hit{background:#eaf8f1;color:var(--ok)}
   .result.holehit{background:#fff7e8;color:#9a6317}
   .result.miss{background:#fff1f3;color:#c14d62}
+  .resultMoney{display:block;font-size:12px;font-weight:600;margin-top:5px;line-height:1.55}
   .reasonBox{margin:0 16px 14px;background:#f5f2f9;color:var(--pass);border-radius:12px;padding:9px 11px;font-size:12px;line-height:1.55}
   .actions{display:flex;gap:8px;padding:0 16px 16px}
   .actions button{flex:1;padding:10px 9px;font-size:13px}
@@ -14276,6 +14322,23 @@ function sPicksDashboardHtml() {
     return Number(v).toFixed(1) + "%";
   }
 
+  function yen(v){
+    return Math.round(Number(v) || 0).toLocaleString('ja-JP') + '円';
+  }
+
+  function profitText(v){
+    var n = Number(v) || 0;
+    return '<b class="' + (n > 0 ? 'gain' : n < 0 ? 'loss' : 'zero') + '">' +
+      (n > 0 ? '+' : n < 0 ? '−' : '') + yen(Math.abs(n)) + '</b>';
+  }
+
+  function moneySummary(label, stake, paid, profit, recovery){
+    if(Number(stake || 0) <= 0) return '';
+    return '<div class="perfMoney"><strong>' + esc(label) + '</strong>' +
+      '購入 ' + yen(stake) + ' ／ 払戻 ' + yen(paid) + '<br>' +
+      '収支 ' + profitText(profit) + ' ／ 回収率 ' + rateText(recovery) + '</div>';
+  }
+
   function renderPerformance(data){
     if(!data){
       performance.innerHTML = '<div class="perfNote">成績データを取得できませんでした。</div>';
@@ -14320,9 +14383,14 @@ function sPicksDashboardHtml() {
         '<div class="perfRow holeRow"><span>🎯S見送り 穴</span><b>' + passHole + '/' + passRaces + '（' + rateText(s.sPassHoleHitRate) + '）</b></div>' +
         '<div class="perfRow"><span>★★★★★ 本線6点</span><b>' + fiveHits6 + '/' + fiveRaces + '（' + rateText(s.fiveStarMain6HitRate) + '）</b></div>' +
         '<div class="perfRow"><span>★★★★★ 10点</span><b>' + fiveHits10 + '/' + fiveRaces + '（' + rateText(s.fiveStarMain10HitRate) + '）</b></div>' +
+        moneySummary('🔥 S勝負 本線6点',s.sBetMain6Stake,s.sBetMain6Return,s.sBetMain6Profit,s.sBetMain6RecoveryRate) +
+        moneySummary('🔥 S勝負 10点',s.sBetMain10Stake,s.sBetMain10Return,s.sBetMain10Profit,s.sBetMain10RecoveryRate) +
+        moneySummary('全予想 本線6点（見送り含む）',s.main6Stake,s.main6Return,s.main6Profit,s.main6RecoveryRate) +
+        moneySummary('全予想 10点（見送り含む）',s.main10Stake,s.main10Return,s.main10Profit,s.main10RecoveryRate) +
+        (Number(s.missingPayoutRaces || 0) ? '<div class="perfRow">払戻未取得 ' + Number(s.missingPayoutRaces) + 'Rは収支集計から除外</div>' : '') +
       '</div>';
     }).join('') +
-      '<div class="perfNote">※本線6点は従来基準を維持。7〜10位を「押さえ4点」として追加し、10点的中率も併記しています。回収率は実購入額を保存していないため表示していません。</div>';
+      '<div class="perfNote">※収支は保存済み予想を各1点100円で買った場合の試算です（3連単の確定払戻を使用）。実際の購入・払戻履歴ではありません。S見送りは購入0円・収支0円で、的中率のみ参考表示します。全予想の試算には見送りも含みます。</div>';
   }
 
   function render(data){
@@ -14403,9 +14471,23 @@ function sPicksDashboardHtml() {
           resultClass = 'miss';
         }
 
+        var raceMoney = '';
+        if(isPass){
+          raceMoney = '<span class="resultMoney">見送り：購入0円・収支0円（的中は参考）</span>';
+        }else if(rc.payout != null && Number.isFinite(Number(rc.payout)) && Number(rc.payout) > 0){
+          var paid = Number(rc.payout);
+          var stake6 = (p.main6 || []).length * 100;
+          var stake10 = stake6 + (p.cover4 || []).length * 100;
+          var returned6 = rc.main6Hit ? paid : 0;
+          var returned10 = (rc.main6Hit || rc.cover4Hit) ? paid : 0;
+          raceMoney = '<span class="resultMoney">本線6点：購入' + yen(stake6) + '・払戻' + yen(returned6) + '・収支' + (returned6 - stake6 >= 0 ? '+' : '−') + yen(Math.abs(returned6 - stake6)) +
+            '<br>10点：購入' + yen(stake10) + '・払戻' + yen(returned10) + '・収支' + (returned10 - stake10 >= 0 ? '+' : '−') + yen(Math.abs(returned10 - stake10)) + '</span>';
+        }else{
+          raceMoney = '<span class="resultMoney">払戻未取得のため収支計算対象外</span>';
+        }
         result = '<div class="result ' + resultClass + '">' +
           label + '：' + esc(rc.combination || '-') +
-          (rc.payout != null ? ' / ' + esc(rc.payout) + '円' : '') + '</div>';
+          (rc.payout != null ? ' / 払戻 ' + yen(rc.payout) + '（100円あたり）' : '') + raceMoney + '</div>';
       }
 
       var reasons = '';
