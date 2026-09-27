@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.35";
+const WORKER_VERSION = "6.6.36";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
@@ -2449,6 +2449,26 @@ async function listPredictions(
   );
 }
 
+function selectPurposePicks(allBets) {
+  const ranked=(allBets||[]).filter(b=>Number.isFinite(b.probability)&&b.probability>0&&Number.isFinite(b.odds)&&b.odds>0);
+  const compact=b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore});
+  return {
+    hit:ranked.slice().sort((a,b)=>b.probability-a.probability||b.totalScore-a.totalScore).slice(0,6).map(compact),
+    balance:ranked.slice(0,6).map(compact),
+    high:ranked.filter(b=>b.odds>=20&&b.probability>=.002&&b.ev>=.60).sort((a,b)=>b.ev-a.ev||b.probability-a.probability).slice(0,4).map(compact)
+  };
+}
+function savedPurposeView(snapshot) {
+  const stored=snapshot.purposePicks;
+  const complete=Array.isArray(snapshot.allBetRanking)&&snapshot.allBetRanking.length===120&&snapshot.allBetRanking.every(b=>Number.isFinite(b.probability)&&Number.isFinite(b.odds));
+  const derived=complete?selectPurposePicks(snapshot.allBetRanking):null;
+  return Object.fromEntries(['hit','balance','high'].map(key=>{
+    const original=Array.isArray(stored?.[key]);
+    const bets=original?stored[key]:derived?.[key]??null;
+    return [key,{source:original?'saved':derived?'derived':'unavailable',bets:bets?.map(b=>({...b,amount:original&&Number.isFinite(snapshot.purposeAllocations?.[key]?.[b.combination])?snapshot.purposeAllocations[key][b.combination]:null}))??null}];
+  }));
+}
+
 async function listDailyPredictions(env, raceDate) {
   const rows = await env.DB.prepare(`
     SELECT race_key, venue, jcd, rno, deadline, confidence, decision,
@@ -2470,6 +2490,7 @@ async function listDailyPredictions(env, raceDate) {
       manshuProbability: snapshot.manshu?.probability ?? null,
       manshuCombinations: snapshot.manshu?.combinations ?? null,
       analyzedAt: row.analyzed_at,
+      purposeModes: savedPurposeView(snapshot),
       main6: (snapshot.bets || []).slice(0, 6).map(bet => bet.combination)
     };
   });
@@ -7641,6 +7662,7 @@ async function buildServerPrediction(
     holeBets,
 
     allBetRanking,
+    purposePicks: selectPurposePicks(allBets),
     manshu
   };
 
