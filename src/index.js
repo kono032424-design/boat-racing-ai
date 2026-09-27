@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.16";
+const WORKER_VERSION = "6.6.19";
 const AI_VERSION = "6.7.5";
 
 const AUTO_MIN_MINUTES = 10;
@@ -12432,6 +12432,172 @@ function compactDailySummary(result) {
   };
 }
 
+/* 過去30日を順次補完する。進捗は D1 に保存し、5分ごとに最大4Rを処理。 */
+function shiftRaceDate(dateKey, days) {
+  const key=String(dateKey);
+  const date=new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(4,6))-1,Number(key.slice(6,8))));
+  date.setUTCDate(date.getUTCDate()+days);
+  return date.toISOString().slice(0,10).replaceAll('-','');
+}
+
+async function ensureHistoricalBackfillState(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS historical_backfill_state (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    cursor_date TEXT,
+    venue_index INTEGER NOT NULL DEFAULT 0,
+    next_rno INTEGER NOT NULL DEFAULT 1,
+    priority_date TEXT,
+    priority_venue_index INTEGER NOT NULL DEFAULT 0,
+    priority_next_rno INTEGER NOT NULL DEFAULT 1,
+    last_yesterday TEXT,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+}
+
+async function readHistoricalBackfillState(env) {
+  await ensureHistoricalBackfillState(env);
+  const yesterday=jstDateKeyOffset(-1);
+  let state=await env.DB.prepare('SELECT * FROM historical_backfill_state WHERE id=1').first();
+  if (!state) {
+    await env.DB.prepare(`INSERT INTO historical_backfill_state
+      (id,cursor_date,last_yesterday) VALUES (1,?,?)`).bind(yesterday,yesterday).run();
+    state=await env.DB.prepare('SELECT * FROM historical_backfill_state WHERE id=1').first();
+  }
+  if (state.last_yesterday!==yesterday) {
+    state.priority_date=yesterday;
+    state.priority_venue_index=0;
+    state.priority_next_rno=1;
+    state.failure_count=0;
+    state.last_yesterday=yesterday;
+  }
+  return state;
+}
+
+async function writeHistoricalBackfillState(env,state) {
+  await env.DB.prepare(`UPDATE historical_backfill_state SET
+    cursor_date=?,venue_index=?,next_rno=?,priority_date=?,
+    priority_venue_index=?,priority_next_rno=?,last_yesterday=?,
+    failure_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`)
+    .bind(state.cursor_date,state.venue_index,state.next_rno,
+      state.priority_date,state.priority_venue_index,state.priority_next_rno,
+      state.last_yesterday,state.failure_count).run();
+}
+
+function makeHistoricalSnapshot(race,before,result,context) {
+  const racers=mergeBefore(race.racers,before);
+  const weights=blankWeights();
+  const detailed=racers.map(r=>{
+    const components=scoreComponents(r,racers);
+    return {lane:r.lane,name:r.name,class:r.class,components,
+      overallScore:overallScore(components,weights),
+      firstScore:roleScore(components,weights,'first'),
+      secondScore:roleScore(components,weights,'second'),
+      thirdScore:roleScore(components,weights,'third')};
+  });
+  return {version:WORKER_VERSION,date:context.date,jcd:context.jcd,
+    venue:context.venue,rno:context.rno,learningOnly:true,historicalImport:true,
+    bets:[],holeBets:[],allBetRanking:[],racersDetailed:detailed,
+    result,createdAt:new Date().toISOString()};
+}
+
+async function backfillOneRace(env,date,jcd,venue,rno) {
+  const existing=await getLearningByRaceKey(env,makeRaceKey(date,jcd,rno));
+  if (existing?.finished) return 'EXISTING';
+  const raceResult=await resultData(date,jcd,rno);
+  if (!raceResult.finished||!Array.isArray(raceResult.winningLanes)||raceResult.winningLanes.length<3)
+    throw new Error('確定結果が取得できません');
+  if (existing) {
+    await saveLearningRace(env,{race_date:date,jcd,venue,rno,result:raceResult,finished:true});
+    return 'UPDATED';
+  }
+  const [race,before]=await Promise.all([raceData(date,jcd,rno),beforeData(date,jcd,rno).catch(()=>({racers:[]}))]);
+  if (race.racers?.length!==6) throw new Error('選手情報6艇が取得できません');
+  const snapshot=makeHistoricalSnapshot(race,before,raceResult,{date,jcd,venue,rno});
+  await saveLearningRace(env,{race_date:date,jcd,venue,rno,race:snapshot,before,
+    result:raceResult,finished:true,historical_import:true});
+  return 'IMPORTED';
+}
+
+async function runHistoricalBackfill(env) {
+  const state=await readHistoricalBackfillState(env);
+  const cutoff=jstDateKeyOffset(-30);
+  const priority=Boolean(state.priority_date);
+  const date=priority?state.priority_date:state.cursor_date;
+  if (!date||date<cutoff) {
+    if (!priority&&state.cursor_date) {state.cursor_date=null;await writeHistoricalBackfillState(env,state)}
+    return {status:'COMPLETE',date:null,processed:0};
+  }
+  let venuesForDate;
+  try {
+    venuesForDate=await venues(date);
+  } catch(error) {
+    state.failure_count=Number(state.failure_count||0)+1;
+    if(state.failure_count<3) {
+      await writeHistoricalBackfillState(env,state);
+      throw error;
+    }
+    console.error('USA_LAB_BACKFILL_DATE_SKIP',date,error?.message||String(error));
+    state.failure_count=0;
+    if(priority)state.priority_date=null;
+    else state.cursor_date=shiftRaceDate(date,-1);
+    await writeHistoricalBackfillState(env,state);
+    return {status:'SKIPPED_DATE',date,processed:0};
+  }
+  let venueIndex=Number(priority?state.priority_venue_index:state.venue_index)||0;
+  let rno=Number(priority?state.priority_next_rno:state.next_rno)||1;
+  let processed=0,imported=0,existing=0,updated=0,skipped=0;
+  while (venueIndex<venuesForDate.length&&processed<4) {
+    const target=venuesForDate[venueIndex];
+    let schedule;
+    try {
+      schedule=await venueData(date,target.jcd);
+    } catch(error) {
+      state.failure_count=Number(state.failure_count||0)+1;
+      if(state.failure_count<3) {
+        if(priority) {state.priority_venue_index=venueIndex;state.priority_next_rno=rno}
+        else {state.venue_index=venueIndex;state.next_rno=rno}
+        await writeHistoricalBackfillState(env,state);
+        throw error;
+      }
+      console.error('USA_LAB_BACKFILL_VENUE_SKIP',date,target.jcd,error?.message||String(error));
+      state.failure_count=0;
+      skipped++;
+      venueIndex++;
+      rno=1;
+      continue;
+    }
+    const available=new Set(schedule.races.map(r=>Number(r.rno)));
+    while (rno<=12&&processed<4) {
+      const current=rno;
+      if (!available.has(current)) {rno++;continue}
+      try {
+        const result=await backfillOneRace(env,date,target.jcd,target.name,current);
+        if (result==='IMPORTED') imported++;
+        else if (result==='UPDATED') updated++;
+        else existing++;
+        state.failure_count=0;
+        rno++;processed++;
+      } catch(error) {
+        state.failure_count=Number(state.failure_count||0)+1;
+        console.error('USA_LAB_BACKFILL_RACE_ERROR',date,target.jcd,current,error?.message||String(error));
+        if (state.failure_count>=3) {rno++;processed++;skipped++;state.failure_count=0}
+        else {processed=4}
+        break;
+      }
+    }
+    if (rno>12) {venueIndex++;rno=1}
+  }
+  if (venueIndex>=venuesForDate.length) {
+    if (priority) {state.priority_date=null;state.priority_venue_index=0;state.priority_next_rno=1}
+    else {state.cursor_date=shiftRaceDate(date,-1);state.venue_index=0;state.next_rno=1}
+  } else if (priority) {state.priority_venue_index=venueIndex;state.priority_next_rno=rno}
+  else {state.venue_index=venueIndex;state.next_rno=rno}
+  await writeHistoricalBackfillState(env,state);
+  return {status:skipped?'PARTIAL':'RUNNING',date,venue:venuesForDate[Math.min(venueIndex,venuesForDate.length-1)]?.name,
+    processed,imported,updated,existing,skipped,priority,cursorDate:state.cursor_date};
+}
+
 async function runScheduledAutomation(
   env,
   event = null
@@ -12511,6 +12677,13 @@ async function runScheduledAutomation(
     errors.push(
       `RESULT: ${resultTask.reason?.message || String(resultTask.reason)}`
     );
+  }
+
+  let historicalBackfill=null;
+  try {
+    historicalBackfill=await runHistoricalBackfill(env);
+  } catch (error) {
+    errors.push(`BACKFILL: ${error?.message||String(error)}`);
   }
 
   let lineNotify =
@@ -12701,6 +12874,7 @@ async function runScheduledAutomation(
           : "OK",
     auto,
     resultUpdate,
+    historicalBackfill,
     lineNotify,
     dailySummary,
     webPushNotify,
@@ -12740,6 +12914,8 @@ async function automationStatus(env) {
   await ensureAutomationTables(
     env
   );
+  await ensureHistoricalBackfillState(env);
+  const historicalBackfillState=await env.DB.prepare("SELECT * FROM historical_backfill_state WHERE id=1").first();
 
   const latest =
     await env.DB
@@ -12856,6 +13032,7 @@ async function automationStatus(env) {
     recent:
       recentResult.results ||
       [],
+    historicalBackfill: historicalBackfillState,
     pendingLearningRaces:
       Number(
         pending?.count ||
@@ -15552,6 +15729,22 @@ export default {
           },
           405
         );
+      }
+
+      /* 自動取り込みの進捗。保存された日付・会場・レース番号のみ公開。 */
+      if (url.pathname === "/api/backfill-status") {
+        await ensureHistoricalBackfillState(env);
+        const state=await env.DB.prepare("SELECT cursor_date,venue_index,next_rno,priority_date,priority_venue_index,priority_next_rno,last_yesterday,updated_at FROM historical_backfill_state WHERE id=1").first();
+        const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM learning_races WHERE historical_import=1 AND finished=1").first();
+        return json({ok:true,state:state||null,imported:Number(count?.total||0),windowDays:30,perRun:4});
+      }
+
+      if (url.pathname === "/api/learned-weights") {
+        const hd=String(url.searchParams.get("hd")||todayJST());
+        if (!/^\d{8}$/.test(hd)) return json({ok:false,error:"日付形式が不正です"},400);
+        const learned=await calculateRoleLearnedWeights(env,hd);
+        return json({ok:true,learned:{active:learned.active,races:learned.races,
+          roles:learned.roles,overall:learned.overall}});
       }
 
       /* ===== VENUES ===== */
