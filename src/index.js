@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.22";
+const WORKER_VERSION = "6.6.24";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
@@ -13996,31 +13996,13 @@ function addPerformanceResult(
 
 
 async function performanceOverview(env) {
-  const result =
-    await env.DB
-      .prepare(`
-        SELECT
-          race_key,
-          race_date,
-          jcd,
-          venue,
-          rno,
-          race_data_json,
-          result_json
-        FROM learning_races
-        WHERE finished = 1
-          AND race_data_json IS NOT NULL
-          AND result_json IS NOT NULL
-        ORDER BY race_date DESC, rno DESC
-        LIMIT 5000
-      `)
-      .all();
-
+  // 成績の新しい起点。過去の学習データは残し、表示集計のみ除外する。
+  const performanceStartDate = "20260927";
   const today =
     todayJST();
 
   const sevenDayStart =
-    jstDateKeyOffset(-6);
+    [jstDateKeyOffset(-6), performanceStartDate].sort().pop();
 
   const allBucket =
     blankPerformanceBucket();
@@ -14032,11 +14014,31 @@ async function performanceOverview(env) {
     blankPerformanceBucket();
 
   let skipped = 0;
+  let offset = 0;
+  const pageSize = 500;
 
-  for (
-    const row of
-    result.results || []
-  ) {
+  // Page through every finished prediction up to today; a fixed LIMIT
+  // silently truncates the 「全期間」 total when the history grows.
+  while (true) {
+    const result =
+      await env.DB
+        .prepare(`
+          SELECT race_date, race_data_json, result_json
+          FROM learning_races
+          WHERE finished = 1
+            AND race_date >= ?
+            AND race_date <= ?
+            AND race_data_json IS NOT NULL
+            AND result_json IS NOT NULL
+          ORDER BY race_date DESC, rno DESC, race_key DESC
+          LIMIT ? OFFSET ?
+        `)
+        .bind(performanceStartDate, today, pageSize, offset)
+        .all();
+
+    const rows = result.results || [];
+
+    for (const row of rows) {
     const snapshot =
       parseJsonSafe(
         row.race_data_json,
@@ -14099,6 +14101,10 @@ async function performanceOverview(env) {
         raceResult
       );
     }
+    }
+
+    if (rows.length < pageSize) break;
+    offset += pageSize;
   }
 
   return {
@@ -14107,6 +14113,7 @@ async function performanceOverview(env) {
     todayDate:
       today,
     sevenDayStart,
+    allPeriodStart:performanceStartDate,
     today:
       finalizePerformanceBucket(
         todayBucket
@@ -14122,7 +14129,7 @@ async function performanceOverview(env) {
     skippedWithoutPrediction:
       skipped,
     note:
-      "収支は1点100円で予想の買い目を購入した場合の試算です。実購入履歴ではありません。S見送りは購入額・払戻額ともに0円です。"
+      "2026年9月27日から成績を新規集計。以前の結果は含めません。収支は1点100円で予想の買い目を購入した場合の試算です。実購入履歴ではありません。S見送りは購入額・払戻額ともに0円です。"
   };
 }
 
@@ -14187,6 +14194,7 @@ function sPicksDashboardHtml() {
   .performance{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
   .perfCard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 6px 18px rgba(71,46,113,.05)}
   .perfCard h3{font-size:14px;margin:0 0 8px}
+  .perfPeriod{font-size:11px;color:var(--muted);margin:-3px 0 7px}
   .perfBig{font-size:20px;font-weight:900;color:var(--accent)}
   .perfRow{display:flex;justify-content:space-between;gap:8px;margin-top:5px;font-size:12px;color:var(--muted)}
   .perfRow b{color:var(--ink);text-align:right}
@@ -14322,6 +14330,12 @@ function sPicksDashboardHtml() {
     return Number(v).toFixed(1) + "%";
   }
 
+  function displayDate(key){
+    var text = String(key || '');
+    if(!/^[0-9]{8}$/.test(text)) return '-';
+    return text.slice(0,4) + '/' + Number(text.slice(4,6)) + '/' + Number(text.slice(6,8));
+  }
+
   function yen(v){
     return Math.round(Number(v) || 0).toLocaleString('ja-JP') + '円';
   }
@@ -14346,9 +14360,9 @@ function sPicksDashboardHtml() {
     }
 
     var groups = [
-      ['今日', data.today],
-      ['過去7日', data.last7Days],
-      ['全期間', data.all]
+      ['今日', data.today, displayDate(data.todayDate)],
+      ['過去7日', data.last7Days, displayDate(data.sevenDayStart) + '〜' + displayDate(data.todayDate) + '（今日を含む）'],
+      ['全期間', data.all, data.allPeriodStart ? displayDate(data.allPeriodStart) + '〜' + displayDate(data.todayDate) : '集計対象の記録なし']
     ];
 
     performance.innerHTML = groups.map(function(item){
@@ -14373,6 +14387,7 @@ function sPicksDashboardHtml() {
 
       return '<div class="perfCard">' +
         '<h3>📊 ' + esc(label) + '</h3>' +
+        '<div class="perfPeriod">' + esc(item[2]) + '</div>' +
         '<div class="perfBig">' + races + 'R</div>' +
         '<div class="perfRow"><span>本線6点</span><b>' + main6 + '/' + races + '（' + rateText(s.main6HitRate) + '）</b></div>' +
         '<div class="perfRow"><span>10点（6＋押さえ4）</span><b>' + main10 + '/' + races + '（' + rateText(s.main10HitRate) + '）</b></div>' +
@@ -14390,7 +14405,7 @@ function sPicksDashboardHtml() {
         (Number(s.missingPayoutRaces || 0) ? '<div class="perfRow">払戻未取得 ' + Number(s.missingPayoutRaces) + 'Rは収支集計から除外</div>' : '') +
       '</div>';
     }).join('') +
-      '<div class="perfNote">※収支は保存済み予想を各1点100円で買った場合の試算です（3連単の確定払戻を使用）。実際の購入・払戻履歴ではありません。S見送りは購入0円・収支0円で、的中率のみ参考表示します。全予想の試算には見送りも含みます。</div>';
+      '<div class="perfNote">※成績は2026/9/27から集計し、それ以前は含みません。過去7日も開始日より前は除外します。収支は保存済み予想を各1点100円で買った場合の試算です（3連単の確定払戻を使用）。実際の購入・払戻履歴ではありません。S見送りは購入0円・収支0円で、的中率のみ参考表示します。全予想の試算には見送りも含みます。</div>';
   }
 
   function render(data){
