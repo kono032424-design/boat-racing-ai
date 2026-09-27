@@ -14,7 +14,7 @@
 <body><div class="wrap">
 <h1>競艇AI V6.6.16</h1><div class="sub">全レース学習保存 / 1着固定なしの総合順位 / 条件付き着順別学習 / 穴狙い維持 / 高速処理</div>
 <div class="card"><label>日付</label><input id="date" type="date"><button id="loadVenues">開催場を取得</button><div id="venueStatus" class="status"></div><label>開催場</label><select id="venue"><option value="">開催場を選択</option></select><button id="loadRaces">レース一覧を取得</button><div id="raceStatus" class="status"></div></div>
-<div class="card"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><label>S勝負 保存時1点金額</label><input id="sBetUnit" type="number" value="100" min="100" step="100"><button id="saveAllS" class="s-save">🔥 S勝負だけまとめて保存</button><div id="sSaveStatus" class="status"></div><div class="notice">穴狙いも同じ1点金額で保存・検証します。</div></div>
+<div class="card"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><label>S勝負 保存時1点金額</label><input id="sBetUnit" type="number" value="100" min="100" step="100"><button id="saveAllS" class="s-save">🔥 S勝負だけまとめて保存</button><button id="saveAllSPass" class="secondary">⚠️ S見送りをまとめて保存</button><div id="sSaveStatus" class="status"></div><div class="notice">S見送りは購入なしの学習・結果確認用に保存します。穴狙いの購入額はS勝負にのみ適用します。</div></div>
 <div class="card"><div class="title">📚 全レース学習保存</div><div class="speed">選択した開催場の未終了レースをまとめて予想時点で保存します。S/A/Bすべて学習に使用し、実績の的中率・回収率には混ぜません。</div><button id="saveAllLearning" class="learn-save">📚 未終了レースを学習用に一括保存</button><div id="learningSaveStatus" class="status"></div><div class="notice">今日のレース専用です。終了済みレースは除外。オッズや展示がまだ取得できないレースは、後でもう一度押すと追加できます。</div></div>
 <div class="card"><div class="title">全レース</div><div id="raceGrid" class="race-grid"></div></div>
 <div class="card"><div id="raceTitle" class="title">選手データ</div><div id="racerStatus" class="status">レースを選択してください</div><div id="racers"></div></div>
@@ -885,7 +885,7 @@ async function getPredictionData(date,jcd,rno,venueName,force=false){const key=c
 
 async function scanSRaces(){const jcd=venueSelect.value;if(!jcd){$("sScanStatus").textContent="開催場を選択してください";return}if(!currentVenueRaces.length){$("sScanStatus").textContent="先にレース一覧を取得してください";return}const button=$("scanSRaces");button.disabled=true;currentSRaces=[];const date=apiDate(),venueName=venueSelect.options[venueSelect.selectedIndex]?.textContent?.split("（")[0]||jcd,start=performance.now();let battleCount=0,passCount=0,unavailable=0,finished=0;const results=await runPool(currentVenueRaces,SCAN_CONCURRENCY,async race=>{const rno=Number(race.rno);if(date===todayApi()){try{const result=await getCachedResult(date,jcd,rno);if(result.finished)return {finished:true,rno}}catch{}}const prediction=await getPredictionData(date,jcd,rno,venueName);return {rno,prediction}},(done,total)=>{$("sScanStatus").textContent=`高速分析中… ${done}/${total}R`});for(const row of results){if(!row||row.error){unavailable++;continue}if(row.finished){finished++;continue}if(!row.prediction){unavailable++;continue}if(row.prediction.confidence==="S"){currentSRaces.push({rno:row.rno,prediction:row.prediction});row.prediction.sDecision.status==="BET"?battleCount++:passCount++}}currentSRaces.sort((a,b)=>a.rno-b.rno);button.disabled=false;const seconds=((performance.now()-start)/1000).toFixed(1);$("sScanStatus").innerHTML=`高速分析完了：${seconds}秒<br>🔥 S勝負：${battleCount}R<br>⚠️ S見送り：${passCount}R<br>終了済み除外：${finished}R<br>データ未取得：${unavailable}R`;renderSRaces()}
 
-function renderSRaces(){let races=currentSRaces;if(sView==="battle")races=races.filter(x=>x.prediction.sDecision.status==="BET");if(sView==="pass")races=races.filter(x=>x.prediction.sDecision.status==="PASS");if(!races.length){sRaceList.innerHTML='<div class="status">該当するS評価レースはありません</div>';return}sRaceList.innerHTML=races.map(item=>{const idx=currentSRaces.indexOf(item),p=item.prediction,d=p.sDecision,top6=p.top15.slice(0,6).map(x=>x.combination).join(" / "),hole=p.holeBets?.map(x=>x.combination).join(" / ");return `<div class="s-race ${d.status==="BET"?"battle":"pass"}"><div class="s-head"><div class="s-title">${item.rno}R</div><div class="s-mark ${d.status==="BET"?"battle":"pass"}">${d.label}</div></div><div class="s-detail">展開判定：${p.strategy.label}<br>安定スコア：<strong>${d.score.toFixed(1)}</strong><br>本線上位6点：${top6}<br>🎯 穴：${hole||"候補なし"}</div><button onclick="openSRace(${idx})">詳しく見る（再通信なし）</button></div>`}).join("")}
+function renderSRaces(){let races=currentSRaces;if(sView==="battle")races=races.filter(x=>x.prediction.sDecision.status==="BET");if(sView==="pass")races=races.filter(x=>x.prediction.sDecision.status==="PASS");if(!races.length){sRaceList.innerHTML='<div class="status">該当するS評価レースはありません</div>';return}sRaceList.innerHTML=races.map(item=>{const idx=currentSRaces.indexOf(item),p=item.prediction,d=p.sDecision,top6=p.top15.slice(0,6).map(x=>x.combination).join(" / "),hole=p.holeBets?.map(x=>x.combination).join(" / ");return `<div class="s-race ${d.status==="BET"?"battle":"pass"}"><div class="s-head"><div class="s-title">${item.rno}R</div><div class="s-mark ${d.status==="BET"?"battle":"pass"}">${d.label}</div></div><div class="s-detail">展開判定：${p.strategy.label}<br>安定スコア：<strong>${d.score.toFixed(1)}</strong><br>本線上位6点：${top6}<br>🎯 穴：${hole||"候補なし"}</div><button onclick="openSRace(${idx})">詳しく見る（再通信なし）</button>${d.status==="PASS"?`<button class="secondary" onclick="savePassedSRace(${idx})">⚠️ このS見送りを保存</button>`:""}</div>`}).join("")}
 
 function openSRace(index){const item=currentSRaces[index];if(!item)return;$("raceTitle").textContent=`${item.rno}R ${item.prediction.sDecision.label}`;renderRacers(item.prediction.modelRacers);renderPredictionBuilt(item.prediction);$("racerStatus").textContent=`${item.prediction.sDecision.label} / キャッシュ表示`;window.scrollTo({top:racersBox.getBoundingClientRect().top+window.scrollY-20,behavior:"smooth"})}
 
@@ -896,6 +896,24 @@ function resetHistoryView(){historyDisplayCount=5;renderHistory()}
 function saveCurrentPrediction(){if(!currentSnapshot){$("saveStatus").textContent="先に予想を表示してください";return}if(alreadySaved(currentSnapshot.date,currentSnapshot.jcd,currentSnapshot.rno)){$("saveStatus").textContent="V6.6.11では保存済みです";return}const unit=Number($("betUnit").value);if(unit<100){$("saveStatus").textContent="1点100円以上で入力してください";return}const mode=String(currentSnapshot.date)<String(todayApi())?"backtest":"manual",history=getHistory();history.push(makeSavedItem(currentSnapshot,unit,mode));saveHistory(history);$("saveStatus").textContent=`保存しました。本線${currentSnapshot.bets?.length||0}点＋穴${currentSnapshot.holeBets?.length||0}点`;resetHistoryView()}
 
 function saveAllSRaces(){const races=currentSRaces.filter(x=>x.prediction.sDecision.status==="BET");if(!races.length){$("sSaveStatus").textContent="保存できるS勝負がありません";return}const unit=Number($("sBetUnit").value);if(unit<100){$("sSaveStatus").textContent="100円以上で入力してください";return}const history=getHistory();let saved=0,duplicate=0;for(const race of races){const s=race.prediction.snapshot;if(alreadySaved(s.date,s.jcd,s.rno)){duplicate++;continue}const mode=String(s.date)<String(todayApi())?"s-backtest":"s-battle-auto";history.push(makeSavedItem(s,unit,mode));saved++}saveHistory(history);$("sSaveStatus").innerHTML=`🔥 S勝負保存完了<br>新規：${saved}R<br>保存済み：${duplicate}R<br>🎯 穴狙いも同時保存`;resetHistoryView()}
+
+function passSaved(snapshot){return getHistory().some(item=>sameRace(item,snapshot.date,snapshot.jcd,snapshot.rno)&&item.saveMode==="s-pass-observation"&&item.version===snapshot.version)}
+function savePassedSnapshots(races){
+  const history=getHistory();let saved=0,duplicate=0;
+  for(const race of races){
+    if(race?.prediction?.sDecision?.status!=="PASS")continue;
+    const snapshot=race.prediction.snapshot;
+    if(passSaved(snapshot)){duplicate++;continue}
+    const item=makeSavedItem(snapshot,0,"s-pass-observation",true);
+    item.betUnit=0;item.holeBetUnit=0;
+    history.push(item);saved++;
+  }
+  if(saved)saveHistory(history);
+  $("sSaveStatus").textContent=`⚠️ S見送り保存：新規 ${saved}R / 保存済み ${duplicate}R（購入なし）`;
+  resetHistoryView();
+}
+function savePassedSRace(index){const race=currentSRaces[index];if(!race||race.prediction.sDecision.status!=="PASS")return;savePassedSnapshots([race])}
+function saveAllPassedSRaces(){const races=currentSRaces.filter(x=>x.prediction.sDecision.status==="PASS");if(!races.length){$("sSaveStatus").textContent="保存できるS見送りがありません";return}savePassedSnapshots(races)}
 
 function rankOfLane(racers,lane,field){const s=racers.slice().sort((a,b)=>Number(b[field])-Number(a[field])),i=s.findIndex(r=>Number(r.lane)===Number(lane));return i>=0?i+1:null} async function saveAllLearningRaces(){
   const jcd=venueSelect.value;
@@ -1767,6 +1785,7 @@ function historyMatches(item){
     historyFilter!=="learning"
     &&
     item.learningOnly
+    &&!(historyFilter==="pass"&&item.saveMode==="s-pass-observation")
   ){
     return false;
   }
@@ -1845,7 +1864,9 @@ function historyMatches(item){
 function compactResultText(item){
 
   const prefix=
-    item.learningOnly
+    item.saveMode==="s-pass-observation"
+      ?"⚠️ S見送り・購入なし / "
+    :item.learningOnly
       ?"📚 学習用 / "
       :"";
 
@@ -2050,7 +2071,9 @@ function historyDetailHtml(item){
     <div class="history-meta">
 
       ${
-        item.learningOnly
+        item.saveMode==="s-pass-observation"
+          ?"⚠️ S見送り保存（購入なし・実績集計から除外）<br>"
+        :item.learningOnly
           ?"📚 学習用保存（実績集計には含めない）<br>"
           :""
       }
@@ -2148,7 +2171,9 @@ function renderHistory(){
           item.sDecision?.status;
 
         const badge=
-          item.learningOnly
+          item.saveMode==="s-pass-observation"
+            ?"⚠️ S見送り・購入なし"
+          :item.learningOnly
             ?"📚 学習用"
             :status==="BET"
               ?"🔥 S勝負"
@@ -2417,6 +2442,8 @@ $("scanSRaces").onclick=
 
 $("saveAllS").onclick=
   saveAllSRaces;
+$("saveAllSPass").onclick=
+  saveAllPassedSRaces;
 
 $("saveAllLearning").onclick=
   saveAllLearningRaces;
@@ -5191,7 +5218,7 @@ renderHistory();
     const p=baseline(...args);
     p.purposePicks=purposeSelections(p);
     p.snapshot.purposePicks=p.purposePicks;
-    p.snapshot.version='6.6.17';
+    p.snapshot.version='6.6.18';
     return p;
   };
   function purposeHtml(p){
@@ -5214,19 +5241,27 @@ renderHistory();
   };
   checkResult=async function(item){
     const result=await checkBase(item);
-    if(!result.finished||!item.purposePicks)return result;
+    if(!result.finished)return result;
+    if(!item.purposePicks)return result;
     result.purpose={};
     for(const key of ['hit','balance','high']){
       const bets=item.purposePicks[key]||[];
       result.purpose[key]=strategyResult(bets,result.combination,result.payoutPer100,Number(item.betUnit||100),bets.length);
     }
+    if(item.saveMode==='s-pass-observation'){
+      for(const entry of [...Object.values(result.comparison||{}),result.hole,...Object.values(result.purpose||{})]){
+        if(!entry)continue;
+        entry.stake=0;entry.returnAmount=0;entry.profit=0;entry.roi=0;
+      }
+      result.totalStake=0;result.returnAmount=0;result.profit=0;result.roi=0;
+    }
     return result;
   };
-  alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.17'&&!item.learningOnly)};
-  alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.17')};
+  alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.18'&&!item.learningOnly)};
+  alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.18')};
   const h=document.querySelector('h1'),v=document.querySelector('.version');
-  if(h)h.textContent='競艇AI V6.6.17';
-  if(v)v.textContent='Boat Racing AI V6.6.17';
+  if(h)h.textContent='競艇AI V6.6.18';
+  if(v)v.textContent='Boat Racing AI V6.6.18';
 })();
 </script>
 
