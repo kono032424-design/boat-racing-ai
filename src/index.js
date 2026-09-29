@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.38";
+const WORKER_VERSION = "6.6.40";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
@@ -2452,11 +2452,21 @@ async function listPredictions(
 function selectPurposePicks(allBets) {
   const ranked=(allBets||[]).filter(b=>Number.isFinite(b.probability)&&b.probability>0&&Number.isFinite(b.odds)&&b.odds>0);
   const compact=b=>({combination:b.combination,probability:b.probability,odds:b.odds,ev:b.ev,totalScore:b.totalScore});
-  return {
-    hit:ranked.slice().sort((a,b)=>b.probability-a.probability||b.totalScore-a.totalScore).slice(0,6).map(compact),
-    balance:ranked.slice(0,6).map(compact),
-    high:ranked.filter(b=>b.odds>=20&&b.probability>=.002&&b.ev>=.60).sort((a,b)=>b.ev-a.ev||b.probability-a.probability).slice(0,4).map(compact)
-  };
+  const firstChance=new Map();
+  for(const b of ranked){const first=String(b.combination).split('-')[0];firstChance.set(first,(firstChance.get(first)||0)+b.probability)}
+  const [axis,axisChance]=[...firstChance].sort((a,b)=>b[1]-a[1])[0]||[null,0];
+  const axisBets=ranked.filter(b=>String(b.combination).startsWith(axis+'-')).sort((a,b)=>b.probability-a.probability);
+  const top3Chance=axisBets.slice(0,3).reduce((sum,b)=>sum+b.probability,0);
+  const mainCount=axisChance>=.4&&top3Chance/axisChance>=.45?3:6;
+  const hit=(axisChance>=.4?axisBets:ranked.slice().sort((a,b)=>b.probability-a.probability)).slice(0,mainCount);
+  const selected=new Set(hit.map(b=>b.combination));
+  // 穴は本線と別展開で選ぶ。軸の優位が非常に大きければ候補を見送る。
+  const candidates=axisChance>=.75?[]:ranked.filter(b=>!selected.has(b.combination)&&b.odds>=30&&b.probability>=.001&&b.ev>=.6)
+    .sort((a,b)=>(b.ev*Math.sqrt(b.probability))-(a.ev*Math.sqrt(a.probability))||b.probability-a.probability);
+  const target=Math.min(16,Math.max(4,Math.ceil(candidates.length*.20)));
+  const high=[],headCounts=new Map();
+  for(const bet of candidates){const first=String(bet.combination).split('-')[0];if((headCounts.get(first)||0)>=Math.ceil(target/2))continue;high.push(bet);headCounts.set(first,(headCounts.get(first)||0)+1);if(high.length>=target)break}
+  return {hit:hit.map(compact),balance:ranked.slice(0,6).map(compact),high:high.map(compact)};
 }
 function savedPurposeView(snapshot) {
   const stored=snapshot.purposePicks;
@@ -8014,7 +8024,8 @@ async function fetchPredictionData(
   env,
   hd,
   jcd,
-  rno
+  rno,
+  options = {}
 ) {
   const [
     raceResult,
@@ -8054,14 +8065,10 @@ async function fetchPredictionData(
     );
   }
 
-  if (
-    beforeResult.status !==
-    "fulfilled"
-    ||
-    !beforeResult.value
-      ?.racers
-      ?.length
-  ) {
+  const beforeAvailable = beforeResult.status === "fulfilled" &&
+    Boolean(beforeResult.value?.racers?.length);
+
+  if (!beforeAvailable && !options.allowBeforeMissing) {
     throw new Error(
       "直前情報がまだ不足しています"
     );
@@ -8083,8 +8090,9 @@ async function fetchPredictionData(
   const race =
     raceResult.value;
 
-  const before =
-    beforeResult.value;
+  const before = beforeAvailable
+    ? beforeResult.value
+    : { racers:[], weather:null };
 
   const odds =
     oddsResult.value;
@@ -8119,7 +8127,8 @@ async function fetchPredictionData(
     race,
     before,
     odds,
-    prediction
+    prediction,
+    beforeAvailable
   };
 }
 
@@ -15857,6 +15866,36 @@ export default {
       }
 
       // Public read-only overview; purchase amounts and private notes are omitted.
+      if (url.pathname === "/api/prediction-preview") {
+        const {hd,jcd,rno} = getRaceParams(url);
+        const raceError = validateRace(jcd,rno);
+        if (raceError) return raceError;
+        if (hd !== todayJST()) return json({ok:false,error:"暫定予想は本日のレースだけ表示できます"},400);
+        const venue = await venueData(hd,jcd);
+        const target = venue.races.find(race=>Number(race.rno)===Number(rno));
+        if (!target) return json({ok:false,error:"レースを取得できませんでした"},404);
+        if (!target.deadlineJST || Date.now() >= Date.parse(target.deadlineJST)) {
+          return json({ok:false,error:"締切後の暫定予想は表示できません。結果タブをご確認ください"},409);
+        }
+        const existing = await env.DB.prepare(
+          "SELECT 1 AS saved FROM predictions WHERE race_key = ? LIMIT 1"
+        ).bind(makeRaceKey(hd,jcd,rno)).first();
+        if (existing) return json({ok:true,saved:true});
+        try {
+          const data = await fetchPredictionData(env,hd,jcd,rno,{allowBeforeMissing:true});
+          const snapshot = data.prediction.snapshot;
+          return json({ok:true,saved:false,preview:{
+            jcd,rno:Number(rno),venue:venue.venue,deadline:target.deadline,
+            analyzedAt:nowJST(),preliminary:true,beforeAvailable:data.beforeAvailable,
+            oddsCount:data.odds.odds.length,confidence:"暫定",decision:"WAIT",
+            manshuProbability:snapshot.manshu?.probability??null,
+            purposeModes:savedPurposeView(snapshot)
+          }});
+        } catch (error) {
+          return json({ok:false,error:error?.message||"暫定予想を計算できませんでした"},503);
+        }
+      }
+
       if (url.pathname === "/api/today-predictions") {
         const date = url.searchParams.get("date") || todayJST();
         if (!/^\d{8}$/.test(date)) return json({ok:false,error:"dateはYYYYMMDDで指定してください"},400);
