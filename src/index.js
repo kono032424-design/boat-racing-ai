@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.40";
+const WORKER_VERSION = "6.6.45";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
@@ -15880,13 +15880,13 @@ export default {
         const existing = await env.DB.prepare(
           "SELECT 1 AS saved FROM predictions WHERE race_key = ? LIMIT 1"
         ).bind(makeRaceKey(hd,jcd,rno)).first();
-        if (existing) return json({ok:true,saved:true});
+        if (existing && url.searchParams.get("refresh") !== "1") return json({ok:true,saved:true});
         try {
           const data = await fetchPredictionData(env,hd,jcd,rno,{allowBeforeMissing:true});
           const snapshot = data.prediction.snapshot;
           return json({ok:true,saved:false,preview:{
             jcd,rno:Number(rno),venue:venue.venue,deadline:target.deadline,
-            analyzedAt:nowJST(),preliminary:true,beforeAvailable:data.beforeAvailable,
+            analyzedAt:nowJST(),preliminary:true,recalculated:Boolean(existing),beforeAvailable:data.beforeAvailable,
             oddsCount:data.odds.odds.length,confidence:"暫定",decision:"WAIT",
             manshuProbability:snapshot.manshu?.probability??null,
             purposeModes:savedPurposeView(snapshot)
