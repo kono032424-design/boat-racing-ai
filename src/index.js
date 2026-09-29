@@ -1,6 +1,6 @@
 const OFFICIAL = "https://www.boatrace.jp";
 
-const WORKER_VERSION = "6.6.45";
+const WORKER_VERSION = "6.6.46";
 const AI_VERSION = "6.7.6";
 
 const AUTO_MIN_MINUTES = 10;
