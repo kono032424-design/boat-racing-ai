@@ -117,7 +117,7 @@ body.advanced-open .portal-section:not(#races):not(#race-detail),body.advanced-o
 <body>
 <header class="portal-header">
   <div class="portal-header-inner"><a class="portal-brand" href="#home" aria-label="うさLAB トップ"><span class="portal-mark">🐰</span><span>うさLAB<small>BOAT RACE AI</small></span></a><span class="portal-live">● 公式レース情報と連携</span></div>
-  <nav class="portal-nav" aria-label="メインメニュー"><a href="#home">トップ</a><a href="#races">レース情報</a><a href="#s-picks">S評価</a><a href="#results">AI予想実績</a><a href="#allRaceResults">レース結果・払戻</a><a href="#database">データ</a></nav>
+  <nav class="portal-nav" aria-label="メインメニュー"><a href="#home">トップ</a><a href="#races">レース情報</a><a href="#all-predictions">全予想</a><a href="#results">AI予想実績</a><a href="#allRaceResults">レース結果・払戻</a><a href="#database">データ</a></nav>
 </header>
 <div class="wrap">
 <section class="portal-hero" id="home"><h1>今日のボートレース</h1><p>開催場・出走表・AI予想・確定結果をまとめて確認できます。</p></section>
@@ -125,14 +125,15 @@ body.advanced-open .portal-section:not(#races):not(#race-detail),body.advanced-o
 <section id="races" class="portal-section"><div class="portal-section-heading"><h2>レース情報</h2><p>開催場を選ぶと、その日のレース一覧を表示します。</p></div>
 
 <div class="card portal-picker"><h2>開催場を選ぶ</h2><label for="date">開催日</label><input id="date" type="date"><button id="loadVenues">開催場を再取得</button><div id="venueStatus" class="status"></div><div id="portalVenueGrid" class="portal-venues" aria-label="開催場一覧"></div><label for="venue">競艇場</label><select id="venue"><option value="">開催場を選択</option></select><button id="loadRaces">レース一覧を取得</button><label for="raceQuick">レース</label><select id="raceQuick"><option value="1">1R</option><option value="2">2R</option><option value="3">3R</option><option value="4">4R</option><option value="5">5R</option><option value="6">6R</option><option value="7">7R</option><option value="8">8R</option><option value="9">9R</option><option value="10">10R</option><option value="11">11R</option><option value="12">12R</option></select><div class="quick-actions"><button type="button" id="quickPredict">実データを取得して予想</button><button type="button" id="quickRefresh" class="secondary">再取得</button></div><div id="raceStatus" class="status"></div><p class="notice">※参考予想です。データの遅延・欠損があり、的中や利益を保証しません。</p></div>
-<section id="venue-view" class="venue-view" hidden aria-live="polite"><header class="venue-view-head"><div><span>会場別レース一覧</span><h3 id="venue-view-title">開催場</h3><p id="venue-view-date"></p></div><button type="button" id="venue-view-close" aria-label="会場一覧へ戻る">会場一覧へ戻る</button></header><div id="venue-view-status" class="status"></div><details class="card auto-overview" id="auto-predictions"><summary class="title">🚤 この会場の保存済み予想をまとめて見る</summary><div class="notice">保存済みの予想は60秒ごとに更新します。未保存のレースは保存後に表示されます。</div><div id="autoPredictionsStatus" class="status" aria-live="polite">保存済みの予想を読み込みます。</div><div id="autoPurposeTabs" class="auto-purpose-tabs" role="group" aria-label="予想タイプ"><button type="button" data-auto-mode="hit" aria-pressed="true">🎯 的中特化型AI</button><button type="button" data-auto-mode="balance" aria-pressed="false">⚖️ バランス型AI</button><button type="button" data-auto-mode="high" aria-pressed="false">💥 一撃重視型AI</button></div><p id="autoPurposeNote" class="notice"></p><nav id="autoVenueNav" class="auto-venue-nav" aria-label="予想の開催場" hidden></nav><div id="autoPredictionsList"></div></details><div id="venue-view-races"></div>
+<section id="venue-view" class="venue-view" hidden aria-live="polite"><header class="venue-view-head"><div><span>会場別レース一覧</span><h3 id="venue-view-title">開催場</h3><p id="venue-view-date"></p></div><button type="button" id="venue-view-close" aria-label="会場一覧へ戻る">会場一覧へ戻る</button></header><div id="venue-view-status" class="status"></div><div id="venue-view-races"></div>
 </section>
 <div class="card" id="race-list"><div class="title">全レース</div><div id="raceGrid" class="race-grid"></div></div>
 </section>
 <section class="portal-section" id="race-detail" hidden><div class="card"><h2>② 出走データ・AI総合ランキング</h2><div id="raceTitle" class="title">選手データ</div><div id="racerStatus" class="status">レースを選択してください</div><div id="racers"></div></div>
 <div class="card"><h2>③ 3連単候補</h2><div class="notice">従来の評価方法による本線・穴候補です。</div><div id="predictionStatus" class="status">レースを選択してください</div><div id="prediction"></div><div id="predictionSavePanel" style="margin-top:18px"><h3>この予想を保存</h3><label for="betUnit">収支検証用の1点あたり金額（円）</label><input id="betUnit" type="number" min="100" step="100" value="100" inputmode="numeric"><button type="button" id="savePrediction" disabled>予想を端末に保存</button><div id="saveStatus" class="status" role="status" aria-live="polite">予想を表示すると保存できます。</div><p class="notice">本線・穴候補・目的別予想を保存します。実際の舟券購入ではありません。D1同期キーを設定済みの場合はクラウドにも同期します。履歴は「詳細な設定・履歴を開く」から確認できます。</p></div></div>
 </section>
-<section class="portal-section"><div class="portal-section-heading"><span>03 / S PICKS</span><h2>S評価をチェック</h2><p>S勝負と見送りを同じ一覧で確認できます。</p></div>
+<section class="portal-section" id="all-predictions"><div class="portal-section-heading"><h2>全会場のAI予想</h2><p>評価を問わず、保存された全レースの予想を会場別に表示します。</p></div><details class="card auto-overview" id="auto-predictions" open><summary class="title">全会場のAI予想一覧</summary><div class="notice">S評価以外も含む保存済み予想を表示します。未保存のレースは会場一覧から開いて暫定予想を確認できます。</div><div id="autoPredictionsStatus" class="status" aria-live="polite">保存済みの予想を読み込みます。</div><div id="autoPurposeTabs" class="auto-purpose-tabs" role="group" aria-label="予想タイプ"><button type="button" data-auto-mode="hit" aria-pressed="true">🎯 的中特化型AI</button><button type="button" data-auto-mode="balance" aria-pressed="false">⚖️ バランス型AI</button><button type="button" data-auto-mode="high" aria-pressed="false">💥 一撃重視型AI</button></div><p id="autoPurposeNote" class="notice"></p><nav id="autoVenueNav" class="auto-venue-nav" aria-label="予想の開催場" hidden></nav><div id="autoPredictionsList"></div></details></section>
+<section class="portal-section" id="s-section" hidden>
 <div class="card" id="s-picks"><div class="title">🔥 S評価レース高速分析</div><div class="speed">⚡ 4レース同時処理・選手/展示/オッズ並列取得・キャッシュ再利用</div><button id="scanSRaces" class="s-button">S評価レースを高速チェック</button><div id="sScanStatus" class="status"></div><div class="s-filter-grid"><button class="s-filter battle active" data-s-view="battle">🔥 S勝負</button><button class="s-filter" data-s-view="all">Sすべて</button><button class="s-filter pass" data-s-view="pass">⚠️ S見送り</button></div><div id="sRaceList"></div><div class="notice">予想は全レースを自動保存します。S勝負・S見送り・万舟高確率だけを通知します。</div></div>
 </section>
 <section class="portal-section" id="results"><div class="portal-section-heading"><span>04 / PERFORMANCE</span><h2>AI予想実績</h2><p>保存済み予想の結果と収支を確認できます。</p></div>
@@ -5615,14 +5616,14 @@ renderHistory();
   alreadySaved=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21'&&!item.learningOnly)};
   alreadySavedForLearning=function(date,jcd,rno){return getHistory().some(item=>sameRace(item,date,jcd,rno)&&String(item.version||'')==='6.6.21')};
   const h=document.querySelector('h1'),v=document.querySelector('.version');
-  if(h)h.textContent='競艇AI V6.6.49';
+  if(h)h.textContent='競艇AI V6.6.50';
   if(v)v.textContent='Boat Racing AI V6.6.46';
 })();
 </script>
 
 <script>
 (function(){
-  document.title='競艇AI V6.6.49';
+  document.title='競艇AI V6.6.50';
   const card=document.getElementById('importPastLearning')?.closest('.card');
   if(!card)return;
   const info=document.createElement('div');
@@ -5918,19 +5919,19 @@ renderHistory();
    groups.get(jcd).races.push(p);
   }
   const sorted=[...groups].sort(([a],[b])=>Number(a)-Number(b));
-  status.textContent=`${data.date.slice(0,4)}/${data.date.slice(4,6)}/${data.date.slice(6,8)}　${groups.size}会場・${data.count}Rの予想を保存済み（万舟通知の目安 ${data.manshuThresholdPercent}%以上）`;
+  status.textContent=`${data.date.slice(0,4)}/${data.date.slice(4,6)}/${data.date.slice(6,8)}　${groups.size}会場・${data.count}Rの予想を保存済み`; 
   const selected=String(venueSelect.value||'').padStart(2,'0');
-  nav.innerHTML='';
-  list.innerHTML=sorted.filter(([jcd])=>jcd===selected).map(([jcd,g])=>{
+  nav.hidden=!sorted.length;nav.innerHTML=sorted.map(([jcd,g])=>`<a href="#auto-venue-${esc(jcd)}">${esc(g.name)}（${g.races.length}R）</a>`).join('');
+  list.innerHTML=sorted.map(([jcd,g])=>{
    const rows=g.races.sort((a,b)=>Number(a.rno)-Number(b.rno)).map(p=>{
     const percent=p.manshuProbability==null?null:(Number(p.manshuProbability)*100).toFixed(1);
     const s=p.confidence==='S';
     const kind=s?(p.decision==='PASS'?'⚠️ S見送り':'🔥 S勝負'):`${p.confidence||'-'}評価`;
     const high=percent!=null&&Number(percent)>=Number(data.manshuThresholdPercent);
-    return `<article class="auto-pred-row"><strong>${esc(p.rno)}R</strong> <span class="badge">${esc(kind)}</span>${high?'<span class="badge manshu">💥 万舟高確率</span>':''}<small>締切 ${esc(p.deadline||'-')} ／ 万舟推定 ${percent==null?'算出待ち':esc(percent)+'%'}</small>${modeHtml(p)}</article>`;
+    return `<article class="auto-pred-row"><strong>${esc(p.rno)}R</strong> <span class="badge">${esc(kind)}</span>${high?'<span class="badge manshu">💥 万舟高確率</span>':''}<small>締切 ${esc(p.deadline||'-')} ／ 万舟推定 ${percent==null?'算出待ち':esc(percent)+'%'}</small>${modeHtml(p)}<button type="button" class="auto-open-race" data-auto-jcd="${esc(jcd)}" data-auto-rno="${Number(p.rno)}">${esc(g.name)} ${Number(p.rno)}Rの詳細を見る</button></article>`;
    }).join('');
    return `<section class="auto-venue" id="auto-venue-${esc(jcd)}"><h3>${esc(g.name)}<small>${g.races.length}Rの予想</small></h3><div class="auto-venue-grid">${rows}</div></section>`;
-  }).join('')||'<p class="portal-empty">この会場の保存済み予想はまだありません。データが揃ったレースから自動的に追加されます。</p>';
+  }).join('')||'<p class="portal-empty">保存済み予想はまだありません。会場一覧からレースを開くと暫定予想を確認できます。</p>';
  }
  async function load(){
   if(trackingToday&&dateInput.value!==todayLocal()){
@@ -5948,6 +5949,7 @@ renderHistory();
  }
  dateInput.addEventListener('change',()=>{trackingToday=dateInput.value===todayLocal();if(apiDate()!==lastDay){nav.innerHTML='';list.innerHTML='';status.textContent='保存済みの予想を読み込みます。'}load()});
  document.addEventListener('usa:venue-selected',()=>{if(latestData&&latestData.date===apiDate())render(latestData);else load()});
+ list.addEventListener('click',async e=>{const button=e.target.closest('[data-auto-jcd][data-auto-rno]');if(!button)return;const jcd=button.dataset.autoJcd,rno=Number(button.dataset.autoRno);await window.openUsaVenue(jcd);const card=document.querySelector(`#venue-view-races .venue-race-card[data-rno="${rno}"]`);if(card){card.querySelector('.venue-race-open')?.click();card.querySelector('[data-tab=ai]')?.click();card.scrollIntoView({behavior:'smooth',block:'start'})}});
  load();setInterval(load,60000);
 })();
 </script>
@@ -6061,6 +6063,7 @@ renderHistory();
 </script>
 
 <style id="usa-reference-layout">
+#s-section[hidden]{display:none!important}#all-predictions .auto-overview{display:block;background:#fff;color:#202127}#all-predictions .auto-overview summary{cursor:pointer}.auto-open-race{width:auto;min-height:38px;margin:10px 0 0;padding:8px 12px;background:#eef2f8;color:#273d60;border:1px solid #dbe3ef;border-radius:9px;font-size:12px}.auto-overview>summary{font-size:21px!important}.auto-venue-nav{display:flex!important}.auto-purpose-tabs button[aria-pressed=true]{background:#263d63;color:#fff}
 :root{--portal-bg:#f6f7fa;--portal-ink:#202127;--portal-muted:#70747e;--portal-line:#e6e8ed;--portal-purple:#2c303a}
 html{scroll-behavior:smooth;scroll-padding-top:112px}
 body{background:#f6f7fa;color:#202127}
