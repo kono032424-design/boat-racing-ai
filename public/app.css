@@ -12,3 +12,5 @@
 @media(max-width:480px){.result-filters{grid-template-columns:1fr 1fr}.result-filters label:last-child{grid-column:1/-1}.compact-result{padding:14px}.official-payout{width:100%;margin-left:0}.selected-result{padding:12px;gap:10px}.selected-result strong{font-size:23px}.selected-result dl div{flex-wrap:wrap;gap:4px}.mode-verdict{flex:1 1 40%;justify-content:space-between}.result-money{gap:5px}.result-detail .result-heading{align-items:flex-start}.result-detail .result-heading>b{font-size:14px}}
 
 .result-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.result-rating{display:inline-block;margin:10px 8px 0 0;border-radius:6px;padding:4px 8px;background:#eaf0fb;color:#304b7e;font-size:12px;font-weight:700}@media(max-width:700px){.result-filters{grid-template-columns:1fr 1fr}.result-filters label:last-child{grid-column:auto}}
+
+.notification-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;font-size:12px}.notification-sent{background:#e5f4eb;color:#246443;border-radius:6px;padding:5px 8px;font-weight:700}
