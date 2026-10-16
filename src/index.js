@@ -11,7 +11,7 @@ var __name = (target, value2) => __defProp(target, "name", { value: value2, conf
 
 // src/common.mjs
 var OFFICIAL = "https://www.boatrace.jp";
-var WORKER_VERSION = "7.1.13-hole-unit1000";
+var WORKER_VERSION = "7.1.14-notification-filter";
 var AI_VERSION = "6.7.6";
 var AUTO_MIN_MINUTES = 0;
 var AUTO_MAX_MINUTES = Number.POSITIVE_INFINITY;
@@ -323,7 +323,7 @@ function sBetBudget(bets) {
 }
 __name(sBetBudget, "sBetBudget");
 function isLineEligible(pick, env) {
-  return !pick.preliminary && (pick.confidence === "S" && pick.decision === "BET" || isManshuHigh(pick, env));
+  return !pick.preliminary && pick.confidence === "S" && (pick.decision === "BET" || pick.decision === "PASS" && isManshuHigh(pick, env));
 }
 __name(isLineEligible, "isLineEligible");
 function mainSixMetrics(bets) {
@@ -6022,7 +6022,7 @@ async function runWebPushNotifications(env, raceDate = todayJST()) {
     env,
     raceDate
   )).filter(
-    (pick) => pick.confidence === "S" && ["BET", "PASS"].includes(pick.decision) || isManshuHigh(pick, env)
+    (pick) => isLineEligible(pick, env)
   );
   let candidates = 0;
   let sent = 0;
