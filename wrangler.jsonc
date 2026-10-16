@@ -1,24 +1,23 @@
 {
   "name": "aged-hill-9a89",
-      "main": "src/index.js",
+  "main": "src/index.js",
   "compatibility_date": "2026-09-02",
-
   "keep_vars": true,
-
   "secrets": {
     "required": [
       "D1_WRITE_TOKEN"
     ]
   },
-
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/api/*"
+      "/api/*",
+      "/app.js",
+      "/saved",
+      "/saved/"
     ]
   },
-
   "d1_databases": [
     {
       "binding": "DB",
@@ -26,13 +25,13 @@
       "database_id": "ef8c4cec-8efc-4131-a17d-dd8407646384"
     }
   ],
-
   "triggers": {
     "crons": [
-      "*/5 * * * *"
+      "*/5 * * * *",
+      "1-59/5 * * * *",
+      "2-59/5 * * * *"
     ]
   },
-
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
