@@ -20,6 +20,14 @@ async function api(path,{method='GET',body,privateAccess=false}={}){
   }catch(error){if(error.name==='AbortError')throw Error('取得に時間がかかっています。再取得してください');throw error}finally{clearTimeout(timer)}
 }
 function status(message){$('status').textContent=message}
+const resultLabels={main6:'本線6点',main10:'本線10点',main15:'本線15点',hole:'穴候補',hit:'的中特化',high:'一撃重視',scenario:'展開予想'};
+let savedResultRows=[];
+const resultModes=row=>row.outcome?.modes||{main6:row.outcome?.baseline,scenario:row.outcome?.scenario};
+const resultState=v=>['hit','miss','pending'].includes(v?.status)?v.status:'unavailable';
+const resultStatus={hit:'🎯 的中',miss:'不的中',pending:'結果待ち',unavailable:'買い目なし'};
+const resultCash=v=>v==null||!Number.isFinite(Number(v))?'未取得':money(v);
+const resultProfit=v=>v==null||!Number.isFinite(Number(v))?'—':(Number(v)>0?'+':'')+money(v);
+
 function showView(view){if(!['races','predictions','results','settings'].includes(view))return;activeView=view;document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!==view);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));if(view==='results'){loadPerformance();loadScenarioPerformance()};if(view==='settings')renderDrafts()}
 function resetRace(){selection=null;displayed=null;++raceRequest;$('raceDetail').hidden=true;$('raceList').replaceChildren()}
 async function loadDay(){const id=++sequence,hd=day();if(!/^\d{8}$/.test(hd))return;resetRace();status('開催場と保存済み予想を取得中…');$('venues').innerHTML='';$('predictionList').innerHTML='';$('officialResults').innerHTML='';++resultRequest;$('loadOfficialResults').disabled=false;
@@ -53,10 +61,10 @@ function renderAI(){const data=displayed,p=data?.snapshot;if(!p){$('raceContent'
 }
 function betTable(bets){return table(['3連単','オッズ','推定確率','EV'],bets.map(b=>[combo(b.combination),num(b.odds,1)+'倍',num(Number(b.probability)*100,2)+'%',num(b.ev)]))}
 function renderPredictions(){const f=$('predictionFilter').value;const filtered=predictions.filter(p=>f==='all'||f==='s'&&p.confidence==='S'||f==='bet'&&p.confidence==='S'&&p.decision==='BET'||f==='pass'&&p.confidence==='S'&&p.decision==='PASS');$('predictionList').innerHTML=filtered.map(p=>`<article class="prediction-card"><div><h3>${esc(p.venue)} ${Number(p.rno)}R</h3><span class="muted">締切 ${esc(p.deadline||'—')} ／ ${esc(p.confidence)}評価 ${p.preliminary?'・暫定':''} ／ ${esc(p.decision==='BET'?'S勝負':p.decision==='PASS'?'S見送り':'')}</span></div><button data-open-venue="${esc(p.jcd)}" data-open-rno="${Number(p.rno)}">予想を見る</button></article>`).join('')||empty('この条件の保存済み予想はありません')}
-async function loadPerformance(){const hd=day(),id=sequence;$('performance').innerHTML=empty('取得中…');$('savedResults').innerHTML='';const results=await Promise.allSettled([api('/api/performance-stats',{privateAccess:true}),api('/api/results?date='+hd,{privateAccess:true})]);if(id!==sequence||activeView!=='results')return;
+async function loadPerformance(){const hd=day(),id=sequence;$('performance').innerHTML=empty('取得中…');$('savedResults').innerHTML='';savedResultRows=[];$('resultOverview').innerHTML='';$('savedResultCount').textContent='';const results=await Promise.allSettled([api('/api/performance-stats',{privateAccess:true}),api('/api/results?date='+hd,{privateAccess:true})]);if(id!==sequence||activeView!=='results')return;
   performance=results[0].status==='fulfilled'?results[0].value.performance:null;
   if(performance)renderPerformance();else $('performance').innerHTML=empty(results[0].reason.message);
-  $('savedResults').innerHTML=results[1].status==='fulfilled'?(results[1].value.results||[]).map(savedResultHtml).join('')||empty('保存済みレースはありません'):empty(results[1].reason.message);
+  if(results[1].status==='fulfilled'){savedResultRows=results[1].value.results||[];const selected=$('savedVenue').value;$('savedVenue').innerHTML='<option value="">すべての開催場</option>'+[...new Set(savedResultRows.map(r=>r.venue))].map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if([...$('savedVenue').options].some(o=>o.value===selected))$('savedVenue').value=selected;renderSavedResults()}else $('savedResults').innerHTML=empty(results[1].reason.message);
 }
 function renderPerformance(){const b=performance?.[$('performancePeriod').value]||{};$('performance').innerHTML=`<div class="stats"><div class="stat"><small>S勝負</small><b>${Number(b.sBetRaces||0)}R</b></div><div class="stat"><small>本線6点の払戻</small><b>${money(b.sBetMain6Return)}</b></div><div class="stat"><small>本線6点の収支</small><b>${money(b.sBetMain6Profit)}</b></div><div class="stat"><small>本線6点の回収率</small><b>${num(b.sBetMain6RecoveryRate,1)}%</b></div></div><p class="muted">S勝負の本線は1点1,000円（6点なら6,000円）の試算です。穴候補は別途1点100円。過去分も同条件で再計算します。払戻未取得 ${Number(b.sBetMissingPayoutRaces||0)}R。下の現行AI・展開比較も各6点×1,000円です。</p>`}
 async function officialResults(){const jcd=$('resultVenue').value,hd=day(),id=++resultRequest;if(!jcd){$('officialResults').innerHTML=empty('開催場を選択してください');return}$('loadOfficialResults').disabled=true;$('officialResults').innerHTML=empty('結果を取得中…');
@@ -74,7 +82,7 @@ $('authStatus').textContent=token()?'認証キー設定済み':'認証キー未�
 $('date').addEventListener('change',()=>{$('loadOfficialResults').disabled=false;loadDay()});$('refresh').onclick=loadDay;
 function shift(n){const d=new Date($('date').value+'T12:00:00');d.setDate(d.getDate()+n);$('date').value=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');$('date').dispatchEvent(new Event('change'))}
 $('previousDay').onclick=()=>shift(-1);$('nextDay').onclick=()=>shift(1);$('closeDetail').onclick=()=>{++raceRequest;displayed=null;$('raceDetail').hidden=true};
-$('predictionFilter').onchange=renderPredictions;$('performancePeriod').onchange=()=>{renderPerformance();loadScenarioPerformance()};$('loadOfficialResults').onclick=officialResults;$('loadJobs').onclick=loadJobs;
+['savedMode','savedStatus','savedVenue'].forEach(id=>$(id).onchange=renderSavedResults);$('predictionFilter').onchange=renderPredictions;$('performancePeriod').onchange=()=>{renderPerformance();loadScenarioPerformance()};$('loadOfficialResults').onclick=officialResults;$('loadJobs').onclick=loadJobs;
 $('saveToken').onclick=async()=>{const value=$('token').value.trim();if(!value){$('authStatus').textContent='キーを入力してください';return}try{const response=await fetch('/api/jobs',{headers:{Authorization:'Bearer '+value},cache:'no-store'}),data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'認証に失敗しました');sessionStorage.setItem('usa_rebuild_token',value);if($('rememberToken').checked)localStorage.setItem('usa_lab_d1_token',value);else localStorage.removeItem('usa_lab_d1_token');$('authStatus').textContent='認証成功。キーを保存しました'}catch(e){$('authStatus').textContent=e.message}};
 $('removeToken').onclick=()=>{sessionStorage.removeItem('usa_rebuild_token');localStorage.removeItem('usa_lab_d1_token');$('token').value='';$('authStatus').textContent='キーを削除しました'};
 $('exportHistory').onclick=()=>{const data={history:read('boat_ai_predictions',[]),drafts:read('usaLAB_note_drafts_v1',{})},url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='usaLAB-backup-'+day()+'.json';a.click();URL.revokeObjectURL(url)};
@@ -123,18 +131,25 @@ async function loadScenarioPerformance(){const id=++comparisonRequest,period=$('
  }catch(e){if(id===comparisonRequest)$('scenarioPerformance').innerHTML=empty(e.message)}
 }
 
+function renderSavedResults(){
+ const key=$('savedMode').value,status=$('savedStatus').value,venue=$('savedVenue').value;
+ const base=savedResultRows.filter(r=>!venue||r.venue===venue);
+ const rows=base.filter(r=>!status||resultState(resultModes(r)[key])===status);
+ const judged=base.filter(r=>['hit','miss'].includes(resultState(resultModes(r)[key])));
+ const hits=judged.filter(r=>resultState(resultModes(r)[key])==='hit').length;
+ const settled=judged.filter(r=>resultModes(r)[key]?.profit!=null&&resultModes(r)[key]?.returns!=null);
+ const profit=settled.reduce((sum,r)=>sum+Number(resultModes(r)[key].profit),0);
+ $('resultOverview').innerHTML=`<p class="muted">${esc($('date').value)} ・ ${esc(resultLabels[key])} ・ ${venue?esc(venue):'全開催場'}</p><div class="stats result-overview"><div class="stat"><small>的中 / 判定済み</small><b>${hits} / ${judged.length}R</b></div><div class="stat"><small>保存買い目の的中率</small><b>${judged.length?num(hits/judged.length*100,1)+'%':'—'}</b></div><div class="stat"><small>収支の試算（${settled.length}R）</small><b class="${profit>0?'profit-plus':profit<0?'profit-minus':''}">${settled.length?resultProfit(profit):'—'}</b></div><div class="stat"><small>結果待ち</small><b>${base.filter(r=>resultState(resultModes(r)[key])==='pending').length}R</b></div></div><p class="muted result-note">選択日・開催場・予想種類の集計です。暫定予想の参考照合を含みます。払戻未取得 ${judged.length-settled.length}R は収支に含めません。上記集計は的中状況の絞り込み前です。</p>`;
+ $('savedResultCount').textContent=`表示 ${rows.length} / ${base.length}R`;
+ $('savedResults').innerHTML=rows.length?rows.map(savedResultHtml).join(''):empty(savedResultRows.length?'条件に一致するレースはありません。':'この日の保存済みレースはありません。');
+}
 function savedResultHtml(row){
- const o=row.outcome;
- const labels={main6:'本線6点',main10:'本線10点',main15:'本線15点',hole:'穴候補',hit:'的中特化型AI',high:'一撃重視型AI',scenario:'展開予想'};
- const modes=Object.fromEntries(Object.entries(o?.modes||{main6:o?.baseline,scenario:o?.scenario}).filter(([key])=>!['balance','scenarioIndependent','scenarioLegacy'].includes(key)));
- const hits=Object.entries(modes).filter(([,v])=>v?.status==='hit');
- const summary=!o?.finished?'結果待ち':hits.length?'🎯 的中した予想：'+hits.map(([key])=>labels[key]).join('・'):Object.values(modes).some(v=>v?.status==='miss')?'保存済みの買い目に的中はありません':'判定できる保存済み買い目がありません';
- const verdict=(key,v)=>{
-  const state=v?.status||'unavailable',text={hit:'🎯 的中',miss:'不的中',pending:'結果待ち',unavailable:'判定対象なし'}[state]||'判定対象なし';
-  const picks=(v?.selections||[]).map(c=>`<span class="result-pick ${state==='hit'&&c===v.winningCombination?'matched':''}">${state==='hit'&&c===v.winningCombination?'🎯 ':''}${combo(c)}</span>`).join('');
-  return `<div class="result-verdict ${state==='hit'?'hit':state==='miss'?'miss':'pending'}"><span>${esc(labels[key]||key)}${v?.count?'（保存'+Number(v.count)+'点）':''}</span><strong>${text}</strong>${state==='hit'?'<div class="result-winning">的中買い目 '+combo(v.winningCombination||o.combination)+'</div>':''}${v?.unit?'<p class="muted">1点'+money(v.unit)+' ／ 購入試算 '+money(v.stake)+' ／ 払戻 '+(v.returns==null?'未確定・未取得':money(v.returns))+' ／ 収支 '+(v.profit==null?'—':money(v.profit))+'</p>':''}${picks?'<details class="result-picks"><summary>保存した買い目を見る</summary><div>'+picks+'</div></details>':''}</div>`;
+ const o=row.outcome||{},modes=resultModes(row),key=$('savedMode').value,v=modes[key],state=resultState(v);
+ const detail=(k,val)=>{
+  const st=resultState(val);
+  return `<section class="result-detail"><div class="result-heading"><b>${esc(resultLabels[k])} ・ ${Number(val?.count||0)}点</b><span class="verdict-tag ${st}">${resultStatus[st]}</span></div><dl class="result-money"><div><dt>購入試算</dt><dd>${val?.count?resultCash(val.stake):'—'}</dd></div><div><dt>払戻試算</dt><dd>${st==='pending'?'結果待ち':resultCash(val?.returns)}</dd></div><div><dt>収支試算</dt><dd>${resultProfit(val?.profit)}</dd></div></dl><p class="muted">1点 ${resultCash(val?.unit)}</p><div class="result-pick-list">${(val?.selections||[]).map(c=>`<span class="result-pick ${st==='hit'&&c===val.winningCombination?'matched':''}">${st==='hit'&&c===val.winningCombination?'🎯 ':''}${combo(c)}</span>`).join('')||'<span class="muted">保存された買い目はありません。</span>'}</div></section>`;
  };
- return `<article class="saved-result"><h4>${esc(row.venue)} ${Number(row.rno)}R</h4><p>${o?.finished?combo(o.combination)+' ／ 払戻 '+(o.payout==null?'未取得':money(o.payout))+'（100円あたり）':'結果待ち'}</p>${mainSixMetricsHtml(o?.main6Metrics)}${o?.budget?.stake?`<div class="result-budget"><b>通知条件対象・本線1点1,000円＋穴1点100円の試算</b><p>${o.budget.picks.map(b=>esc(b.combination)+'：'+money(b.amount)).join(' ／ ')}</p><p>購入 ${money(o.budget.stake)} ／ 払戻 ${o.budget.returns==null?'未確定・未取得':money(o.budget.returns)} ／ 収支 ${o.budget.profit==null?'—':money(o.budget.profit)}</p></div>`:o?.budget?.status==='unavailable'?'<p class="muted">金額試算：買い目不足のため算出できません。</p>':''}<p class="result-hit-summary">${esc(summary)}</p>${Object.entries(modes).map(([key,v])=>verdict(key,v)).join('')}${o?.preliminary?'<p class="muted">暫定予想の参考照合です。同条件の実績比較には含めません。</p>':''}<p class="muted">保存された買い目との一致判定です。判定対象なし＝買い目未保存・候補なし。本線6点・10点・15点は候補が重複するため、複数の的中表示が出る場合があります。実際の購入や利益を表すものではありません。</p></article>`;
+ return `<article class="saved-result compact-result"><div class="result-heading"><h4>${esc(row.venue)} ${Number(row.rno)}R</h4><span class="verdict-tag ${state}">${resultStatus[state]}</span></div>${o.preliminary?'<span class="preliminary-label">暫定予想・参考照合</span>':''}<div class="official-result-line"><span class="muted">確定着順</span>${o.finished?combo(o.combination):'<b>結果待ち</b>'}<span class="official-payout">100円払戻 <b>${o.finished?resultCash(o.payout):'—'}</b></span></div><div class="selected-result"><div><small>${esc(resultLabels[key])} ・ ${Number(v?.count||0)}点</small><strong class="${Number(v?.profit)>0?'profit-plus':Number(v?.profit)<0?'profit-minus':''}">${resultProfit(v?.profit)}</strong><small>収支の試算</small></div><dl><div><dt>購入試算</dt><dd>${v?.count?resultCash(v.stake):'—'}</dd></div><div><dt>払戻試算</dt><dd>${state==='pending'?'結果待ち':v?.count?resultCash(v.returns):'—'}</dd></div></dl></div><div class="mode-verdicts">${['hit','high','scenario','main6','hole'].map(k=>`<span class="mode-verdict ${resultState(modes[k])}">${esc(resultLabels[k])}<b>${resultStatus[resultState(modes[k])]}</b></span>`).join('')}</div><details><summary>買い目・種類別の収支を見る</summary>${Object.entries(resultLabels).map(([k])=>detail(k,modes[k])).join('')}${o.budget?.stake?`<section class="result-detail"><b>通知条件対象の合計試算</b><p>購入 ${resultCash(o.budget.stake)} ／ 払戻 ${resultCash(o.budget.returns)} ／ 収支 ${resultProfit(o.budget.profit)}</p></section>`:''}<details><summary>保存時の本線6点の推定値</summary>${mainSixMetricsHtml(o.main6Metrics)||empty('推定値は保存されていません。')}</details></details></article>`;
 }
 
 function scenarioManshuText(m){
