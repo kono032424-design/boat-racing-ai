@@ -11,7 +11,7 @@ var __name = (target, value2) => __defProp(target, "name", { value: value2, conf
 
 // src/common.mjs
 var OFFICIAL = "https://www.boatrace.jp";
-var WORKER_VERSION = "7.1.15-notification-badges";
+var WORKER_VERSION = "7.1.16-hole-experiment";
 var AI_VERSION = "6.7.6";
 var AUTO_MIN_MINUTES = 0;
 var AUTO_MAX_MINUTES = Number.POSITIVE_INFINITY;
@@ -4602,6 +4602,47 @@ async function findAutoTargets(hd, atDate = null) {
   };
 }
 __name(findAutoTargets, "findAutoTargets");
+const HOLE_EXPERIMENT_VERSION = 'hole-odds100-v1';
+const HOLE_EXPERIMENT_START = '2026-10-16T10:20:20.000Z';
+function makeHoleExperiment(snapshot, now = Date.now()) {
+  const deadline = Date.parse(snapshot.deadlineJST || '');
+  if (now < Date.parse(HOLE_EXPERIMENT_START) || !Number.isFinite(deadline) || now >= deadline || snapshot.finalized !== true || snapshot.preliminary || snapshot.result?.finished || snapshot.confidence !== 'S' || snapshot.sDecision?.status !== 'PASS' || !Number.isFinite(snapshot.manshu?.probability) || snapshot.manshu.probability < 0.15) return null;
+  const bets = snapshot.holeBets;
+  if (!Array.isArray(bets) || !bets.length || bets.some(b => !validCombo(b?.combination) || !Number.isFinite(Number(b.odds)) || Number(b.odds) <= 0) || new Set(bets.map(b => b.combination)).size !== bets.length) return null;
+  const all = bets.map(b => ({combination:b.combination, odds:Number(b.odds)}));
+  return {version:HOLE_EXPERIMENT_VERSION, recordedAt:new Date(now).toISOString(), deadlineJST:snapshot.deadlineJST, unit:1000, confidence:snapshot.confidence, decision:'PASS', manshuProbability:snapshot.manshu.probability, threshold:0.15, all, under100:all.filter(b => b.odds < 100)};
+}
+function holeExperimentSummary(rows) {
+  const modes = Object.fromEntries(['all','under100'].map(k => [k,{races:0,settled:0,pending:0,skipped:0,missingPayout:0,hits:0,stake:0,settledStake:0,returns:0,profit:0,roi:null,hitRate:null}]));
+  let paired=0,firstRecordedAt=null;
+  const raceRows=[];
+  for (const row of rows) {
+    const e=parseJsonSafe(row.experiment,null), r=parseJsonSafe(row.result_json,null);
+    if (!e || e.version!==HOLE_EXPERIMENT_VERSION || e.unit!==1000 || !(Date.parse(e.recordedAt)>=Date.parse(HOLE_EXPERIMENT_START) && Date.parse(e.recordedAt)<Date.parse(e.deadlineJST)) || !Array.isArray(e.all) || !Array.isArray(e.under100)) continue;
+    paired++; if(!firstRecordedAt||e.recordedAt<firstRecordedAt)firstRecordedAt=e.recordedAt;
+    const winning=r?.combination || r?.winningLanes?.slice(0,3).join('-');
+    const finished=r?.finished===true && validCombo(winning);
+    const payout=Number(r?.payout ?? r?.payoutPer100);
+    const states={};
+    for(const k of ['all','under100']) {
+      const b=modes[k], bets=e[k];
+      if(!bets.length){b.skipped++;states[k]='対象なし';continue;}
+      b.races++; const stake=bets.length*e.unit;b.stake+=stake;
+      if(!finished){b.pending++;states[k]='結果待ち';continue;}
+      const hit=bets.some(p=>p.combination===winning);states[k]=hit?'的中':'不的中';
+      if(!Number.isFinite(payout)||payout<=0){b.missingPayout++;continue;}
+      b.settled++;b.hits+=Number(hit);b.settledStake+=stake;b.returns+=hit?payout*e.unit/100:0;
+    }
+    raceRows.push({date:row.race_date,venue:row.venue,rno:row.rno,recordedAt:e.recordedAt,all:e.all,under100:e.under100,states});
+  }
+  for(const b of Object.values(modes)){b.profit=b.returns-b.settledStake;b.roi=b.settledStake?100*b.returns/b.settledStake:null;b.hitRate=b.settled?100*b.hits/b.settled:null;}
+  return {version:HOLE_EXPERIMENT_VERSION,start:HOLE_EXPERIMENT_START,firstRecordedAt,paired,modes,races:raceRows.slice(-30).reverse()};
+}
+async function holeExperimentPerformance(env){
+  const rows=(await env.DB.prepare("SELECT p.race_date,p.venue,p.rno,json_extract(p.prediction_json,'$.holeExperiment') experiment,COALESCE(l.result_json,json_extract(p.prediction_json,'$.result')) result_json FROM predictions p LEFT JOIN learning_races l ON p.race_key=l.race_key WHERE p.race_date>='20261016' AND json_extract(p.prediction_json,'$.holeExperiment.version')=? ORDER BY p.race_date,p.deadline_jst,p.jcd,p.rno").bind(HOLE_EXPERIMENT_VERSION).all()).results||[];
+  return holeExperimentSummary(rows);
+}
+
 async function analyzeAndSaveTargetCore(env, target, force = false) {
   const raceKey = makeRaceKey(target.hd, target.jcd, target.rno);
   const deadlineMs = Date.parse(target.deadlineJST);
@@ -4633,6 +4674,8 @@ async function analyzeAndSaveTargetCore(env, target, force = false) {
   note.body += "\n\n" + scenarioNoteLines(snapshot.scenarioAnalysis).join("\n");
   if (Date.now() >= deadlineMs) throw new Error("\u4FDD\u5B58\u76F4\u524D\u306B\u7DE0\u5207\u3092\u904E\u304E\u305F\u305F\u3081\u4FDD\u5B58\u3057\u307E\u305B\u3093\u3067\u3057\u305F");
   if (snapshot.scenarioAnalysis) snapshot.scenarioAnalysis.savedAt = nowJST();
+  const holeExperiment = makeHoleExperiment(snapshot);
+  if (holeExperiment) snapshot.holeExperiment = holeExperiment;
   await savePredictionPair(env, {
     race_date: target.hd,
     jcd: target.jcd,
@@ -7179,6 +7222,7 @@ async function fetchHandler(request, env) {
       const learned = await calculateRoleLearnedWeights(env, hd);
       return reply({ ok: true, learned: { active: learned.active, races: learned.races, roles: learned.roles, overall: learned.overall, racerHistory: buildRacerHistoryStats(learned._history, hd) } });
     }
+    if (path === "/api/hole-experiment") return reply({ok:true,experiment:await holeExperimentPerformance(env)});
     if (path === "/api/scenario-performance") return reply({ ok: true, comparison: await scenarioPerformance(env, url.searchParams.get("period") || "today") });
     if (path === "/api/performance-stats") return reply({ ok: true, performance: await performanceOverview(env) });
     if (path === "/api/results") {

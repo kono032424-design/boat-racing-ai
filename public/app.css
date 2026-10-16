@@ -14,3 +14,5 @@
 .result-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.result-rating{display:inline-block;margin:10px 8px 0 0;border-radius:6px;padding:4px 8px;background:#eaf0fb;color:#304b7e;font-size:12px;font-weight:700}@media(max-width:700px){.result-filters{grid-template-columns:1fr 1fr}.result-filters label:last-child{grid-column:auto}}
 
 .notification-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;font-size:12px}.notification-sent{background:#e5f4eb;color:#246443;border-radius:6px;padding:5px 8px;font-weight:700}
+
+.experiment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.experiment-grid>.panel{margin:0;min-width:0}@media(max-width:700px){.experiment-grid{grid-template-columns:1fr}}
