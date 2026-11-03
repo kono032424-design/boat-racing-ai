@@ -11,11 +11,11 @@ var __name = (target, value2) => __defProp(target, "name", { value: value2, conf
 
 // src/common.mjs
 var OFFICIAL = "https://www.boatrace.jp";
-var WORKER_VERSION = "7.1.16-hole-experiment";
+var WORKER_VERSION = "7.1.16-memory-fix-20261103";
 var AI_VERSION = "6.7.6";
 var AUTO_MIN_MINUTES = 0;
 var AUTO_MAX_MINUTES = Number.POSITIVE_INFINITY;
-var AUTO_BATCH_SIZE = 6;
+var AUTO_BATCH_SIZE = 3;
 var LINE_FINAL_MAX_MINUTES = 35;
 function manshuThreshold(env) {
   const n = Number(env.MANSHU_NOTIFY_MIN_PERCENT ?? 15);
@@ -1770,6 +1770,15 @@ async function getTrainableHistoryFromD1(env, asOfDate = null) {
     WHERE finished = 1
   `;
   const binds = [];
+  // Reduce Worker memory use: read only the seven calendar days before asOfDate.
+  // Historical rows remain in D1 and are not deleted.
+  const anchor = String(asOfDate || todayJST());
+  const cutoffDate = new Date(Date.UTC(
+    Number(anchor.slice(0, 4)), Number(anchor.slice(4, 6)) - 1,
+    Number(anchor.slice(6, 8))
+  ) - 7 * 864e5).toISOString().slice(0, 10).replaceAll('-', '');
+  sql += ' AND race_date >= ?';
+  binds.push(cutoffDate);
   if (asOfDate) {
     sql += ` AND race_date < ?`;
     binds.push(
